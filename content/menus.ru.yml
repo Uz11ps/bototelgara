@@ -1,0 +1,67 @@
+segment_menu:
+  - label: "Я планирую поездку"
+    callback_data: "segment_pre_arrival"
+  - label: "Я уже проживаю в отеле"
+    callback_data: "segment_in_house"
+
+pre_arrival_menu:
+  - label: "🏨 Забронировать номер"
+    callback_data: "pre_book_room"
+  - label: "🛏 Номера и цены"
+    callback_data: "pre_rooms_prices"
+  - label: "🌲 Об отеле"
+    callback_data: "pre_about_hotel"
+  - label: "🎉 Мероприятия и банкеты"
+    callback_data: "pre_events_banquets"
+  - label: "📍 Как добраться"
+    callback_data: "pre_how_to_get"
+  - label: "❓ Вопросы и ответы"
+    callback_data: "pre_faq"
+  - label: "🍽 Ресторан"
+    callback_data: "pre_restaurant"
+  - label: "📞 Связаться с администратором"
+    callback_data: "pre_contact_admin"
+
+in_house_menu:
+  - label: "🛎 Рум‑сервис"
+    callback_data: "in_room_service"
+  - label: "🌲 Прогулки и отдых"
+    callback_data: "in_walks_relax"
+  - label: "🍽 Ресторан"
+    callback_data: "in_restaurant"
+  - label: "🎒 Рекомендации"
+    callback_data: "in_recommendations"
+  - label: "📞 Администратор"
+    callback_data: "in_admin"
+  - label: "Дополнительные услуги"
+    callback_data: "in_additional_services"
+
+room_service:
+  branches:
+    - label: "Техническая проблема"
+      callback_data: "rs_technical_problem"
+    - label: "Дополнительно в номер"
+      callback_data: "rs_extra_to_room"
+    - label: "Уборка номера"
+      callback_data: "rs_cleaning"
+    - label: "Подушечное меню"
+      callback_data: "rs_pillow_menu"
+    - label: "Другое"
+      callback_data: "rs_other"
+
+breakfast:
+  entry_menu:
+    - label: "Заказать завтрак"
+      callback_data: "breakfast_order"
+    - label: "Состав завтрака"
+      callback_data: "breakfast_composition"
+  after_deadline_menu:
+    - label: "Связаться с администратором"
+      callback_data: "breakfast_contact_admin"
+    - label: "Отмена"
+      callback_data: "breakfast_cancel"
+  confirm_menu:
+    - label: "Подтвердить заказ"
+      callback_data: "breakfast_confirm_yes"
+    - label: "Отменить"
+      callback_data: "breakfast_confirm_no"

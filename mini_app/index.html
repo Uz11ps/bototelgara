@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Отель «ГОРА»</title>
+    <script src="https://unpkg.com/@telegram-apps/sdk@1.0.0/dist/index.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans text-gray-900 pb-20">
+    <!-- Header -->
+    <header class="bg-green-800 text-white p-6 shadow-md">
+        <h1 class="text-2xl font-bold">Отель «ГОРА»</h1>
+        <p class="text-sm opacity-80">Сортавала, Карелия</p>
+    </header>
+
+    <!-- Content -->
+    <main class="p-4">
+        <div id="home-content" class="space-y-4 animate-fade-in">
+            <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-200">
+                <h2 class="text-xl font-bold mb-2">Добро пожаловать!</h2>
+                <p class="text-gray-600">Премиальный загородный отдых на берегу Ладожского озера.</p>
+            </div>
+            <img 
+                src="https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80" 
+                alt="Hotel" 
+                class="w-full h-48 object-cover rounded-xl shadow-sm"
+            />
+        </div>
+
+        <div id="services-content" class="hidden space-y-4 animate-fade-in">
+            <h2 class="text-xl font-bold px-2">Дополнительные услуги</h2>
+            <div class="grid grid-cols-2 gap-4">
+                <button onclick="bookService('Сап-борды')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center hover:bg-gray-50 transition-colors">
+                    <span class="text-3xl mb-2">🏄</span>
+                    <span class="font-bold">Сап-борды</span>
+                    <span class="text-green-700 text-sm">800₽/час</span>
+                </button>
+                <button onclick="bookService('Лодки и катера')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center hover:bg-gray-50 transition-colors">
+                    <span class="text-3xl mb-2">⛵</span>
+                    <span class="font-bold">Лодки</span>
+                    <span class="text-green-700 text-sm">от 1500₽</span>
+                </button>
+                <button onclick="bookService('Баня')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center hover:bg-gray-50 transition-colors">
+                    <span class="text-3xl mb-2">🧖‍♀️</span>
+                    <span class="font-bold">Баня</span>
+                    <span class="text-green-700 text-sm">3000₽/сеанс</span>
+                </button>
+                <button onclick="bookService('Хаусботы')" class="bg-white p-4 rounded-xl shadow-sm border border-gray-200 flex flex-col items-center hover:bg-gray-50 transition-colors">
+                    <span class="text-3xl mb-2">🏠</span>
+                    <span class="font-bold">Хаусботы</span>
+                    <span class="text-green-700 text-sm">2500₽/чел</span>
+                </button>
+            </div>
+        </div>
+
+        <div id="restaurant-content" class="hidden space-y-4 animate-fade-in">
+            <h2 class="text-xl font-bold px-2">Ресторан «ГОРА»</h2>
+            <div class="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-200">
+                <img 
+                    src="https://images.unsplash.com/photo-1552566626-52f8b828add9?auto=format&fit=crop&w=800&q=80" 
+                    alt="Restaurant" 
+                    class="w-full h-32 object-cover"
+                />
+                <div class="p-4 space-y-4">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span>Завтрак «Шведский стол»</span>
+                        <span class="font-bold">650₽</span>
+                    </div>
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span>Уха Карельская</span>
+                        <span class="font-bold">550₽</span>
+                    </div>
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <span>Оленина с брусникой</span>
+                        <span class="font-bold">1200₽</span>
+                    </div>
+                    <button onclick="bookService('Заказ в ресторане')" class="w-full bg-green-800 text-white py-3 rounded-lg font-bold hover:bg-green-900">
+                        Сделать заказ
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Bottom Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around p-2 shadow-lg">
+        <button onclick="switchTab('home')" id="tab-home" class="flex flex-col items-center p-2 rounded-lg transition-colors text-green-800 bg-green-50">
+            <span class="text-xl">🏨</span>
+            <span class="text-xs font-medium">Главная</span>
+        </button>
+        <button onclick="switchTab('services')" id="tab-services" class="flex flex-col items-center p-2 rounded-lg transition-colors text-gray-400">
+            <span class="text-xl">🎯</span>
+            <span class="text-xs font-medium">Услуги</span>
+        </button>
+        <button onclick="switchTab('restaurant')" id="tab-restaurant" class="flex flex-col items-center p-2 rounded-lg transition-colors text-gray-400">
+            <span class="text-xl">🍽</span>
+            <span class="text-xs font-medium">Ресторан</span>
+        </button>
+    </nav>
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        // Initialize Telegram WebApp
+        const WebApp = window.Telegram?.WebApp;
+        if (WebApp) {
+            WebApp.ready();
+            WebApp.expand();
+        }
+
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all content
+            document.getElementById('home-content').classList.add('hidden');
+            document.getElementById('services-content').classList.add('hidden');
+            document.getElementById('restaurant-content').classList.add('hidden');
+            
+            // Remove active class from all tabs
+            document.getElementById('tab-home').className = 'flex flex-col items-center p-2 rounded-lg transition-colors text-gray-400';
+            document.getElementById('tab-services').className = 'flex flex-col items-center p-2 rounded-lg transition-colors text-gray-400';
+            document.getElementById('tab-restaurant').className = 'flex flex-col items-center p-2 rounded-lg transition-colors text-gray-400';
+            
+            // Show selected content and activate tab
+            document.getElementById(`${tabName}-content`).classList.remove('hidden');
+            document.getElementById(`tab-${tabName}`).className = 'flex flex-col items-center p-2 rounded-lg transition-colors text-green-800 bg-green-50';
+        }
+
+        // Service booking
+        function bookService(serviceName) {
+            if (WebApp) {
+                WebApp.sendData(JSON.stringify({ action: 'book_service', service: serviceName }));
+                WebApp.close();
+            } else {
+                alert(`Запрос на бронирование: ${serviceName}`);
+            }
+        }
+    </script>
+</body>
+</html>
