@@ -22,32 +22,36 @@ pre_arrival_menu:
   - label: "📞 Связаться с администратором"
     callback_data: "pre_contact_admin"
 
-in_house_menu:
-  - label: "🛎 Рум‑сервис"
-    callback_data: "in_room_service"
-  - label: "🌲 Прогулки и отдых"
-    callback_data: "in_walks_relax"
-  - label: "🍽 Ресторан"
-    callback_data: "in_restaurant"
-  - label: "🎒 Рекомендации"
-    callback_data: "in_recommendations"
-  - label: "📞 Администратор"
-    callback_data: "in_admin"
-  - label: "Дополнительные услуги"
-    callback_data: "in_additional_services"
+    in_house_menu:
+      - label: "🛎 Рум‑сервис"
+        callback_data: "in_room_service"
+      - label: "🍳 Завтраки"
+        callback_data: "in_restaurant"
+      - label: "🗺 Гид по Сортавала"
+        callback_data: "in_guide"
+      - label: "🌤 Погода и Камеры"
+        callback_data: "in_weather"
+      - label: "🆘 SOS / Помощь"
+        callback_data: "in_sos"
+      - label: "👤 Личный кабинет"
+        callback_data: "in_loyalty"
+      - label: "📞 Администратор"
+        callback_data: "in_admin"
+      - label: "↩️ Назад"
+        callback_data: "back_to_segment"
 
-room_service:
-  branches:
-    - label: "Техническая проблема"
-      callback_data: "rs_technical_problem"
-    - label: "Дополнительно в номер"
-      callback_data: "rs_extra_to_room"
-    - label: "Уборка номера"
-      callback_data: "rs_cleaning"
-    - label: "Подушечное меню"
-      callback_data: "rs_pillow_menu"
-    - label: "Другое"
-      callback_data: "rs_other"
+    room_service:
+      branches:
+        - label: "Техническая проблема"
+          callback_data: "rs_technical_problem"
+        - label: "Дополнительно в номер"
+          callback_data: "rs_extra_to_room"
+        - label: "Уборка номера"
+          callback_data: "rs_cleaning"
+        - label: "Меню подушек"
+          callback_data: "rs_pillow_menu"
+        - label: "Другое"
+          callback_data: "rs_other"
 
 breakfast:
   entry_menu:

@@ -19,14 +19,12 @@ def build_segment_keyboard() -> InlineKeyboardMarkup:
         )
     
     # Add Mini App button
-    # NOTE: Telegram does not allow 'localhost' for WebAppInfo. 
-    # This button is commented out until a public HTTPS URL is provided.
-    # buttons.append([
-    #     InlineKeyboardButton(
-    #         text="📱 Визуальное меню (Mini App)",
-    #         web_app=WebAppInfo(url="https://localhost:8443")
-    #     )
-    # ])
+    buttons.append([
+        InlineKeyboardButton(
+            text="📱 Визуальное меню (Mini App)",
+            web_app=WebAppInfo(url="https://gora.ru.net")
+        )
+    ])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

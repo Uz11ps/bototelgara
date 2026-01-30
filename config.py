@@ -20,6 +20,11 @@ def get_settings() -> Settings:
     bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
 
     database_url = os.getenv("DATABASE_URL", "sqlite:///./gora_bot.db")
+    
+    if database_url.startswith('"') and database_url.endswith('"'):
+        database_url = database_url[1:-1]
+    
+    print(f"DEBUG: Using database URL: {database_url}")
     admin_registration_token = os.getenv("ADMIN_REGISTRATION_TOKEN")
     log_level = os.getenv("LOG_LEVEL", "INFO")
 

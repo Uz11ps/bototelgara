@@ -66,6 +66,22 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer()
         return
 
+    if key == "in_guide":
+        # Handled by guide router
+        return
+
+    if key == "in_weather":
+        # Handled by weather router
+        return
+
+    if key == "in_sos":
+        # Handled by sos router
+        return
+
+    if key == "in_loyalty":
+        # Handled by loyalty router
+        return
+
     mapping = {
         "in_walks_relax": "in_house.walks_relax",
         "in_recommendations": "in_house.recommendations",

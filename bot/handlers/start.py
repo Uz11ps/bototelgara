@@ -65,25 +65,10 @@ async def cmd_start(message: Message, state: FSMContext) -> None:
     await message.answer(choice_prompt, reply_markup=build_segment_keyboard())
 
 
-@router.callback_query(FlowState.choosing_segment, F.data.in_({"segment_pre_arrival", "segment_in_house"}))
+@router.callback_query(F.data.in_({"segment_pre_arrival", "segment_in_house"}))
 async def segment_chosen(callback: CallbackQuery, state: FSMContext) -> None:
-    segment = callback.data
-    await state.update_data(segment=segment)
-
-    if segment == "segment_pre_arrival":
-        await state.set_state(FlowState.pre_arrival_menu)
-        text = content_manager.get_text("menus.pre_arrival_title")
-        from bot.keyboards.main_menu import build_pre_arrival_menu
-
-        await callback.message.edit_text(text, reply_markup=build_pre_arrival_menu())
-    else:
-        await state.set_state(FlowState.in_house_menu)
-        text = content_manager.get_text("menus.in_house_title")
-        from bot.keyboards.main_menu import build_in_house_menu
-
-        await callback.message.edit_text(text, reply_markup=build_in_house_menu())
-
-    await callback.answer()
+    # Handlers moved to check_in.py to avoid state conflicts
+    pass
 
 
 @router.message(Command("reload_content"))

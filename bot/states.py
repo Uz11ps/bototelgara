@@ -40,4 +40,14 @@ class FlowState(StatesGroup):
     contact_admin_type = State()
     contact_admin_message = State()
 
+    # Booking flow (Shelter API)
+    booking_check_in = State()
+    booking_check_out = State()
+    booking_adults = State()
+    booking_select_variant = State()
+    booking_guest_name = State()
+    booking_guest_phone = State()
+    booking_guest_email = State()
+    booking_confirm = State()
+
     admin_reply = State()

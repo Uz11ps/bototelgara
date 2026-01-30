@@ -7,12 +7,15 @@ from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import os
 from sqlalchemy.orm import Session
 
-from db.models import Ticket, TicketMessage, TicketMessageSender, TicketStatus, TicketType
+from db.models import Ticket, TicketMessage, TicketMessageSender, TicketStatus, TicketType, MenuItem, GuideItem, StaffTask, User
 from db.session import SessionLocal
+from services.shelter import get_shelter_client, ShelterAPIError
 
 
 logger = logging.getLogger(__name__)
@@ -21,7 +24,7 @@ app = FastAPI(title="GORA Hotel Admin API", version="1.0.0")
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://gora.ru.net", "https://gora.ru.net", "http://89.104.66.21", "https://89.104.66.21"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -88,8 +91,8 @@ class StatisticsResponse(BaseModel):
 
 
 # API Routes
-@app.get("/")
-async def root():
+@app.get("/api")
+async def root_api():
     return {"message": "GORA Hotel Admin API", "version": "1.0.0"}
 
 
@@ -228,6 +231,118 @@ async def get_statistics(db: Session = Depends(get_db)):
         declined_today=declined_today,
         total_active=total_active
     )
+
+
+@app.get("/api/shelter/hotel-params")
+async def get_shelter_hotel_params():
+    """Get hotel parameters from Shelter API."""
+    try:
+        shelter = get_shelter_client()
+        return await shelter.get_hotel_params()
+    except ShelterAPIError as e:
+        raise HTTPException(status_code=500, detail=f"Shelter API error: {e.message}")
+
+
+@app.get("/api/shelter/order/{order_token}")
+async def get_shelter_order(order_token: str):
+    """Get order details from Shelter API."""
+    try:
+        shelter = get_shelter_client()
+        return await shelter.get_order(order_token)
+    except ShelterAPIError as e:
+        raise HTTPException(status_code=500, detail=f"Shelter API error: {e.message}")
+
+
+@app.get("/api/shelter/availability")
+async def get_shelter_availability(
+    check_in: str,
+    check_out: str,
+    adults: int = 1
+):
+    """Get room availability for specific dates."""
+    try:
+        from datetime import datetime
+        from dataclasses import asdict
+        ci = datetime.strptime(check_in, "%Y-%m-%d").date()
+        co = datetime.strptime(check_out, "%Y-%m-%d").date()
+        shelter = get_shelter_client()
+        variants = await shelter.get_variants(ci, co, adults)
+        # Ensure we return a list of dicts
+        return [asdict(v) if hasattr(v, '__dataclass_fields__') else v for v in variants]
+    except Exception as e:
+        logger.error(f"Availability error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
+
+
+# --- Content Management Endpoints ---
+
+@app.get("/api/menu")
+async def get_menu(db: Session = Depends(get_db)):
+    return db.query(MenuItem).all()
+
+@app.post("/api/menu")
+async def create_menu_item(item: dict, db: Session = Depends(get_db)):
+    new_item = MenuItem(**item)
+    db.add(new_item)
+    db.commit()
+    return new_item
+
+@app.get("/api/guide")
+async def get_guide(db: Session = Depends(get_db)):
+    return db.query(GuideItem).all()
+
+@app.get("/api/staff/tasks")
+async def get_staff_tasks(db: Session = Depends(get_db)):
+    return db.query(StaffTask).order_by(StaffTask.created_at.desc()).all()
+
+@app.post("/api/staff/tasks")
+async def create_staff_task(task: dict, db: Session = Depends(get_db)):
+    new_task = StaffTask(**task)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
+@app.post("/api/staff/tasks/{task_id}/complete")
+async def complete_staff_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(StaffTask).filter(StaffTask.id == task_id).first()
+    if task:
+        task.status = "COMPLETED"
+        task.completed_at = datetime.utcnow()
+        db.commit()
+    return {"status": "ok"}
+
+@app.get("/api/users")
+async def get_users(db: Session = Depends(get_db)):
+    return db.query(User).all()
+
+
+@app.get("/api/check-admin")
+async def check_admin(telegram_id: str, db: Session = Depends(get_db)):
+    admin = db.query(AdminUser).filter(AdminUser.telegram_id == telegram_id, AdminUser.is_active == True).first()
+    return {"is_admin": admin is not None}
+
+
+@app.post("/api/marketing/broadcast")
+async def broadcast_message(data: dict):
+    # In a real app, this would trigger a background task to send messages via bot
+    return {"message": f"Рассылка '{data['text']}' запланирована для {data['target']} пользователей"}
+
+
+# Serve static files from admin_panel directory
+admin_panel_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin_panel")
+if os.path.exists(admin_panel_path):
+    @app.get("/admin")
+    async def serve_admin():
+        return FileResponse(os.path.join(admin_panel_path, "index.html"))
+
+    # Mount static files at the root. 
+    # MUST be the last route defined to avoid shadowing API routes.
+    app.mount("/", StaticFiles(directory=admin_panel_path, html=True), name="admin")
+else:
+    @app.get("/")
+    async def root():
+        return {"message": "GORA Hotel Admin API", "version": "1.0.0"}
 
 
 if __name__ == "__main__":

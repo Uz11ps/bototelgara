@@ -21,6 +21,10 @@ class TicketType(str, Enum):
     ROOM_SERVICE = "ROOM_SERVICE"
     PRE_ARRIVAL = "PRE_ARRIVAL"
     BREAKFAST = "BREAKFAST"
+    SOS = "SOS"
+    STAFF_TASK = "STAFF_TASK"
+    CHECK_IN = "CHECK_IN"
+    FEEDBACK = "FEEDBACK"
     OTHER = "OTHER"
 
 
@@ -71,6 +75,55 @@ class TicketMessage(Base):
     ticket: Mapped[Ticket] = relationship("Ticket", back_populates="messages")
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    loyalty_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    last_visit: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class MenuItem(Base):
+    __tablename__ = "menu_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    price: Mapped[float] = mapped_column(Integer, nullable=False)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    is_available: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+
+class GuideItem(Base):
+    __tablename__ = "guide_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True) # e.g., 'waterfalls', 'cafes'
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    map_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+
+
+class StaffTask(Base):
+    __tablename__ = "staff_tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    room_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(64), nullable=False) # e.g., 'cleaning', 'maintenance'
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False) # 'PENDING', 'IN_PROGRESS', 'COMPLETED'
+    assigned_to: Mapped[str | None] = mapped_column(String(64), nullable=True) # Staff telegram_id
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_users"
 
@@ -79,4 +132,4 @@ class AdminUser(Base):
 
     telegram_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
