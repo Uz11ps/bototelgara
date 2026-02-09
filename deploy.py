@@ -90,9 +90,11 @@ def deploy():
     setup_commands = [
         f"cd {remote_path} && tar -xzf {tar_name}",
         f"cd {remote_path} && rm {tar_name}",
-        f"apt-get update && apt-get install -y python3-pip python3-venv ffmpeg",
+        f"apt-get update && apt-get install -y python3-pip python3-venv ffmpeg nodejs npm",
         f"cd {remote_path} && python3 -m venv venv",
-        f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt"
+        f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt",
+        f"cd {remote_path} && npm install",
+        f"cd {remote_path} && npm run build"
     ]
     
     for cmd in setup_commands:

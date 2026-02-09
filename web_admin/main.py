@@ -774,16 +774,27 @@ if os.path.exists(admin_panel_path):
     async def serve_admin():
         return FileResponse(os.path.join(admin_panel_path, "index.html"))
 
-# Serve mini app for guests
-if os.path.exists(mini_app_path):
+# Serve mini app for guests (React build)
+react_build_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mini_app")
+if os.path.exists(react_build_path):
     @app.get("/menu")
     async def serve_mini_app():
-        return FileResponse(
-            os.path.join(mini_app_path, "index.html"),
-            headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
-        )
+        index_path = os.path.join(react_build_path, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(
+                index_path,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+            )
+        else:
+            # Fallback to old mini_app/index.html if React build not found
+            old_path = os.path.join(react_build_path, "index.html")
+            if os.path.exists(old_path):
+                return FileResponse(old_path)
+            raise HTTPException(status_code=404, detail="Mini app not found")
     
-    app.mount("/mini_app", StaticFiles(directory=mini_app_path, html=True), name="mini_app")
+    # Serve static assets from React build
+    app.mount("/assets", StaticFiles(directory=os.path.join(react_build_path, "assets"), html=False), name="react_assets")
+    app.mount("/mini_app", StaticFiles(directory=react_build_path, html=True), name="mini_app")
 
 # Mount admin panel static files at the root. 
 # MUST be the last route defined to avoid shadowing API routes.
