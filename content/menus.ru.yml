@@ -27,8 +27,6 @@ pre_arrival_menu:
     callback_data: "back_to_segment"
 
     in_house_menu:
-      - label: "🛎 Рум‑сервис"
-        callback_data: "in_room_service"
       - label: "🍳 Завтраки"
         callback_data: "in_restaurant"
       - label: "🗺 Гид по Сортавала"
