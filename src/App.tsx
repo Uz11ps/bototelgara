@@ -8,7 +8,7 @@ const WebApp = (window as any).Telegram?.WebApp || {
   close: () => { },
 };
 
-type MenuKey = 'main' | 'visual';
+type MenuKey = 'main' | 'planning' | 'staying' | 'visual';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
@@ -41,6 +41,8 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-extrabold text-emerald-900 mb-2 tracking-tight">Отель «ГОРА»</h1>
           <p className="text-slate-600 font-medium">
             {currentMenu === 'main' && 'Чем мы можем вам помочь?'}
+            {currentMenu === 'planning' && 'Я планирую поездку'}
+            {currentMenu === 'staying' && 'Я уже проживаю в отеле'}
             {currentMenu === 'visual' && 'Визуальное меню'}
           </p>
         </div>
@@ -49,7 +51,7 @@ const App: React.FC = () => {
           {currentMenu === 'main' && (
             <>
               <button
-                onClick={() => sendMenuMessage('Я планирую поездку')}
+                onClick={() => setCurrentMenu('planning')}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">✈️</span>
@@ -57,7 +59,7 @@ const App: React.FC = () => {
               </button>
 
               <button
-                onClick={() => sendMenuMessage('Я уже проживаю в отеле')}
+                onClick={() => setCurrentMenu('staying')}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🏨</span>
@@ -70,6 +72,64 @@ const App: React.FC = () => {
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🗓️</span>
                 <span>Визуальное меню 🗓️</span>
+              </button>
+            </>
+          )}
+
+          {currentMenu === 'planning' && (
+            <>
+              {[
+                '🏨 Забронировать номер',
+                '🛏️ Номера и цены',
+                '🌲 Об отеле',
+                '🎉 Мероприятия и банкеты',
+                '📍 Как добраться',
+                '❓ Вопросы и ответы',
+                '🍽️ Ресторан',
+                '📞 Связаться с администратором',
+              ].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => sendMenuMessage(label)}
+                  className="w-full glass-card p-4 text-left font-semibold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center"
+                >
+                  <span>{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setCurrentMenu('main')}
+                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
+              >
+                🔙 Назад
+              </button>
+            </>
+          )}
+
+          {currentMenu === 'staying' && (
+            <>
+              {[
+                '🍳 Завтраки',
+                '🗺 Гид по Сортавала',
+                '🌤 Погода и Камеры',
+                '🆘 SOS / Помощь',
+                '👤 Личный кабинет',
+                '📞 Администратор',
+              ].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => sendMenuMessage(label)}
+                  className="w-full glass-card p-4 text-left font-semibold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center"
+                >
+                  <span>{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setCurrentMenu('main')}
+                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
+              >
+                🔙 Назад
               </button>
             </>
           )}
