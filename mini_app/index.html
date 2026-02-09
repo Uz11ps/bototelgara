@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Меню | Отель «ГОРА»</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .animate-fade-in {
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .cart-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            background: #dc2626;
+            color: white;
+            border-radius: 50%;
+            width: 18px;
+            height: 18px;
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-100 font-sans text-gray-900 pb-24">
+    <div id="app-container" class="min-h-screen">
+        <!-- Views will be injected here or toggled -->
+
+        <!-- HOME VIEW -->
+        <div id="view-home" class="view-tab hidden space-y-6 p-4">
+            <header class="bg-green-800 text-white p-8 rounded-b-[40px] shadow-xl text-center mb-6 -mx-4 -mt-4">
+                <h1 class="text-3xl font-black tracking-tight">🏨 Отель GORA</h1>
+                <p class="text-sm opacity-80 mt-1">Добро пожаловать в Сортавала!</p>
+            </header>
+
+            <div class="bg-green-50 p-8 rounded-[32px] border border-green-100 text-center">
+                <div class="text-4xl mb-4">📡</div>
+                <h2 class="font-black text-green-900 text-xl mb-2">Бесплатный Wi-Fi</h2>
+                <p class="text-sm text-green-700 mb-6">Сеть: <b>GORA_GUEST</b><br>Пароль: <code>gora2024</code></p>
+                <button onclick="window.Telegram.WebApp.openTelegramLink('https://t.me/Hotelbot_gora2222_bot')"
+                    class="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg">Написать
+                    администратору</button>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-gray-50 p-6 rounded-[28px] text-center shadow-sm border border-gray-100">
+                    <span class="text-3xl block mb-2">🍳</span>
+                    <b class="text-sm">Завтраки</b>
+                    <p class="text-[10px] text-gray-400 mt-1">08:00 - 10:00</p>
+                </div>
+                <div class="bg-gray-50 p-6 rounded-[28px] text-center shadow-sm border border-gray-100">
+                    <span class="text-3xl block mb-2">🛎</span>
+                    <b class="text-sm">Рум-сервис</b>
+                    <p class="text-[10px] text-gray-400 mt-1">Круглосуточно</p>
+                </div>
+            </div>
+
+            <div class="bg-blue-50 p-6 rounded-[28px] text-center shadow-sm border border-blue-100">
+                <span class="text-3xl block mb-2">📸</span>
+                <b class="text-sm">Регистрация</b>
+                <p class="text-[10px] text-blue-600 mt-1">Пришлите фото паспорта в чат</p>
+            </div>
+        </div>
+
+        <!-- BOOKING VIEW -->
+        <div id="view-booking" class="view-tab hidden p-4 space-y-4">
+            <h2 class="text-2xl font-black mb-6">🛏 Бронирование</h2>
+            <div class="bg-blue-50 p-8 rounded-[32px] text-center border border-blue-100">
+                <p class="text-sm text-blue-800 mb-6">Бронирование доступно через нашего администратора.</p>
+                <button onclick="window.Telegram.WebApp.openTelegramLink('https://t.me/Hotelbot_gora2222_bot')"
+                    class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-xl mb-4">Написать в
+                    чат</button>
+            </div>
+        </div>
+
+        <!-- MENU VIEW -->
+        <div id="view-menu" class="view-tab p-4">
+            <header class="bg-green-800 text-white p-4 shadow-md sticky top-0 z-10 rounded-xl mb-4">
+                <h1 class="text-xl font-bold">Меню ресторана</h1>
+            </header>
+
+            <div id="loading" class="p-8 text-center">
+                <div
+                    class="inline-block animate-spin w-8 h-8 border-4 border-green-800 border-t-transparent rounded-full">
+                </div>
+                <p class="mt-2 text-gray-500">Загрузка меню...</p>
+            </div>
+
+            <main id="menu-content" class="hidden space-y-4 animate-fade-in"></main>
+        </div>
+
+        <!-- GUIDE VIEW -->
+        <div id="view-guide" class="view-tab hidden p-4 space-y-4">
+            <h2 class="text-2xl font-black mb-6">🗺 Гид</h2>
+            <div id="guide-loading" class="p-8 text-center text-gray-400">Загрузка гида...</div>
+            <div id="guide-content" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <!-- Modals (Cart, etc) -->
+    <div id="cart-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end justify-center">
+        <!-- (Same cart modal content) -->
+        <div class="bg-white w-full max-w-lg rounded-t-2xl p-4 max-h-[80vh] overflow-y-auto">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">🛒 Корзина</h2>
+                <button id="close-cart-btn" class="text-gray-500 text-2xl">&times;</button>
+            </div>
+            <div id="cart-items" class="space-y-3"></div>
+            <div id="cart-total" class="mt-4 pt-4 border-t text-lg font-bold"></div>
+            <div id="cart-form" class="mt-4 space-y-3 hidden">
+                <input type="text" id="guest-name" placeholder="Ваше имя" class="w-full p-3 border rounded-lg">
+                <input type="text" id="room-number" placeholder="Номер комнаты" class="w-full p-3 border rounded-lg">
+                <textarea id="comment" placeholder="Комментарий (необязательно)" class="w-full p-3 border rounded-lg"
+                    rows="2"></textarea>
+            </div>
+            <button id="checkout-btn"
+                class="w-full mt-4 bg-green-800 text-white py-3 rounded-lg font-bold hover:bg-green-900 disabled:bg-gray-400">
+                Оформить заказ
+            </button>
+        </div>
+    </div>
+
+    <div id="confirmation-modal"
+        class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <!-- (Same confirmation modal) -->
+        <div class="bg-white w-full max-w-md rounded-2xl p-6 text-center">
+            <div class="text-5xl mb-4">✅</div>
+            <h2 class="text-xl font-bold mb-2">Заказ оформлен!</h2>
+            <div id="confirmation-details" class="text-left mt-4 space-y-2"></div>
+            <button id="close-confirm-btn"
+                class="w-full mt-6 bg-green-800 text-white py-3 rounded-lg font-bold">Закрыть</button>
+        </div>
+    </div>
+
+    <!-- Navigation Bar -->
+    <nav
+        class="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-gray-100 shadow-2xl rounded-t-3xl flex justify-around p-3 z-40 pb-6">
+        <button onclick="switchTab('home')" id="nav-home"
+            class="flex flex-col items-center text-gray-400 transition-all">
+            <span class="text-2xl">🏠</span>
+            <span class="text-[10px] font-bold mt-1">Главная</span>
+        </button>
+        <button onclick="switchTab('booking')" id="nav-booking"
+            class="flex flex-col items-center text-gray-400 transition-all">
+            <span class="text-2xl">🛏</span>
+            <span class="text-[10px] font-bold mt-1">Бронь</span>
+        </button>
+        <button onclick="switchTab('menu')" id="nav-menu"
+            class="flex flex-col items-center text-green-700 scale-110 transition-all relative">
+            <span class="text-2xl">🍴</span>
+            <span class="text-[10px] font-bold mt-1">Меню</span>
+            <span id="nav-cart-badge"
+                class="hidden absolute top-0 right-2 bg-red-500 text-white text-[9px] rounded-full w-4 h-4 flex items-center justify-center">0</span>
+        </button>
+        <button onclick="switchTab('guide')" id="nav-guide"
+            class="flex flex-col items-center text-gray-400 transition-all">
+            <span class="text-2xl">🗺</span>
+            <span class="text-[10px] font-bold mt-1">Гид</span>
+        </button>
+    </nav>
+
+    <!-- Floating Cart Button (only visible in Menu tab) -->
+    <div id="floating-cart" class="fixed bottom-24 right-4 z-40 hidden">
+        <button id="cart-button"
+            class="bg-green-800 text-white p-4 rounded-full shadow-lg flex items-center justify-center relative">
+            <span class="text-2xl">🛒</span>
+            <span id="cart-count"
+                class="hidden absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border-2 border-white">0</span>
+        </button>
+    </div>
+
+    <script>
+        // Global functions for inline onclick handlers
+        let switchTab;
+
+        (function () {
+            const API_BASE = window.location.origin;
+            let menuItems = [];
+            let guideItems = [];
+            let cart = {};
+            let currentTab = 'menu'; // Default to menu as per user flow usually
+
+            function getTelegramUser() {
+                try {
+                    if (window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.user) {
+                        return window.Telegram.WebApp.initDataUnsafe.user;
+                    }
+                } catch (e) { }
+                return null;
+            }
+
+            // --- Tab Switching ---
+            switchTab = function (tabName) {
+                currentTab = tabName;
+                document.querySelectorAll('.view-tab').forEach(el => el.classList.add('hidden'));
+                document.getElementById('view-' + tabName).classList.remove('hidden');
+
+                // Update Nav
+                const navIds = ['home', 'booking', 'menu', 'guide'];
+                navIds.forEach(id => {
+                    const btn = document.getElementById('nav-' + id);
+                    if (id === tabName) {
+                        btn.classList.add('text-green-700', 'scale-110');
+                        btn.classList.remove('text-gray-400');
+                    } else {
+                        btn.classList.remove('text-green-700', 'scale-110');
+                        btn.classList.add('text-gray-400');
+                    }
+                });
+
+                // Show/Hide Floating Cart (only on menu)
+                const floatCart = document.getElementById('floating-cart');
+                if (tabName === 'menu' && Object.keys(cart).length > 0) {
+                    floatCart.classList.remove('hidden');
+                } else {
+                    floatCart.classList.add('hidden');
+                }
+
+                // Load data if needed
+                if (tabName === 'guide' && guideItems.length === 0) {
+                    loadGuide();
+                }
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+            }
+
+            // --- Loaders ---
+            async function loadMenu() {
+                try {
+                    const response = await fetch(API_BASE + '/api/menu');
+                    if (!response.ok) throw new Error('HTTP ' + response.status);
+                    menuItems = await response.json();
+                    if (menuItems.length === 0) {
+                        document.getElementById('loading').innerHTML = '<p class="text-gray-500">Меню пусто</p>';
+                        return;
+                    }
+                    renderMenu();
+                } catch (error) {
+                    document.getElementById('loading').innerHTML = '<p class="text-red-500">Ошибка загрузки меню</p>';
+                }
+            }
+
+            async function loadGuide() {
+                try {
+                    const response = await fetch(API_BASE + '/api/guide');
+                    guideItems = await response.json();
+                    renderGuide();
+                } catch (error) {
+                    document.getElementById('guide-loading').innerHTML = '<p class="text-red-500">Ошибка загрузки гида</p>';
+                }
+            }
+
+            // --- Renderers ---
+            function renderMenu() {
+                document.getElementById('loading').classList.add('hidden');
+                const content = document.getElementById('menu-content');
+                content.classList.remove('hidden');
+
+                const groups = groupByCategory(menuItems);
+                let html = '';
+
+                for (const catKey in groups) {
+                    const group = groups[catKey];
+                    html += '<div class="mb-6">';
+                    html += '<h2 class="text-lg font-bold mb-3 px-2">' + group.name + '</h2>';
+                    html += '<div class="space-y-3">';
+                    for (let i = 0; i < group.items.length; i++) {
+                        const item = group.items[i];
+                        const qty = cart[item.id] || 0;
+                        html += `
+                        <div class="bg-white rounded-xl shadow-sm border p-4">
+                            <div class="flex justify-between items-start">
+                                <div class="flex-1">
+                                    <h3 class="font-bold">${item.name}</h3>
+                                    ${item.description ? `<p class="text-sm text-gray-500">${item.description}</p>` : ''}
+                                    ${renderComposition(item.composition)}
+                                </div>
+                                <div class="text-green-700 font-bold ml-4">${item.price}₽</div>
+                            </div>
+                            <div class="flex items-center justify-end mt-3 gap-3">
+                                <button type="button" data-action="minus" data-id="${item.id}" class="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold ${qty === 0 ? 'opacity-50' : ''}">−</button>
+                                <span class="w-8 text-center font-bold" data-qty-display="${item.id}">${qty}</span>
+                                <button type="button" data-action="plus" data-id="${item.id}" class="w-10 h-10 bg-green-800 text-white rounded-full text-xl font-bold">+</button>
+                            </div>
+                        </div>`;
+                    }
+                    html += '</div></div>';
+                }
+                content.innerHTML = html;
+            }
+
+            function renderGuide() {
+                const container = document.getElementById('guide-content');
+                document.getElementById('guide-loading').classList.add('hidden');
+                if (guideItems.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500">Нет мест</p>';
+                    return;
+                }
+                container.innerHTML = guideItems.map(g => `
+                    <div class="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm">
+                        <div class="font-bold text-lg">${g.name}</div>
+                        <p class="text-xs text-gray-500 mt-2 mb-4">${g.description}</p>
+                        ${g.map_url ? `<a href="${g.map_url}" target="_blank" class="text-blue-600 font-bold text-xs flex items-center gap-1">📍 Открыть в картах</a>` : ''}
+                    </div>
+                `).join('');
+            }
+
+            function groupByCategory(items) {
+                const groups = {};
+                const categoryNames = { 'breakfast': '🍳 Завтрак', 'lunch': '🍽 Обед', 'dinner': '🌙 Ужин' };
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (!item.is_available) continue;
+                    const cat = item.category || 'other';
+                    if (!groups[cat]) {
+                        groups[cat] = { name: categoryNames[cat] || cat, items: [] };
+                    }
+                    groups[cat].items.push(item);
+                }
+                return groups;
+            }
+
+            function renderComposition(composition) {
+                if (!composition || !Array.isArray(composition) || composition.length === 0) return '';
+
+                const items = composition.map((c) => {
+                    // Поддерживаем как объектный, так и строковый формат состава
+                    if (typeof c === 'string') {
+                        return `<span class="inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mb-1">${c}</span>`;
+                    }
+
+                    let text = c.name || '';
+                    if (c.quantity && c.unit) text += ` (${c.quantity} ${c.unit})`;
+                    return `<span class="inline-block bg-gray-100 text-gray-600 text-[10px] px-2 py-0.5 rounded-full mr-1 mb-1">${text}</span>`;
+                }).join('');
+
+                return `<div class="mt-2 flex flex-wrap">${items}</div>`;
+            }
+
+            // --- Cart Logic ---
+            function changeQty(itemId, delta) {
+                const current = cart[itemId] || 0;
+                const newQty = Math.max(0, current + delta);
+                if (newQty === 0) delete cart[itemId];
+                else cart[itemId] = newQty;
+                updateCartUI();
+                renderMenu();
+            }
+
+            function updateCartUI() {
+                let count = 0;
+                let total = 0;
+                for (const id in cart) {
+                    count += cart[id];
+                    const item = menuItems.find(i => i.id === parseInt(id));
+                    if (item) total += item.price * cart[id];
+                }
+
+                const countEl = document.getElementById('cart-count');
+                const badgeEl = document.getElementById('nav-cart-badge');
+                const floatCart = document.getElementById('floating-cart');
+
+                if (count > 0) {
+                    countEl.classList.remove('hidden');
+                    countEl.textContent = count;
+                    badgeEl.classList.remove('hidden');
+                    badgeEl.textContent = count;
+                    if (currentTab === 'menu') floatCart.classList.remove('hidden');
+                } else {
+                    countEl.classList.add('hidden');
+                    badgeEl.classList.add('hidden');
+                    floatCart.classList.add('hidden');
+                }
+            }
+
+            function openCart() {
+                const cartItemsEl = document.getElementById('cart-items');
+                const cartTotalEl = document.getElementById('cart-total');
+                const cartForm = document.getElementById('cart-form');
+                const checkoutBtn = document.getElementById('checkout-btn');
+
+                let html = '';
+                let total = 0;
+
+                for (const id in cart) {
+                    const qty = cart[id];
+                    const item = menuItems.find(i => i.id === parseInt(id));
+                    if (!item) continue;
+                    const subtotal = item.price * qty;
+                    total += subtotal;
+
+                    html += `
+                    <div class="bg-gray-50 rounded-lg p-3">
+                        <div class="flex justify-between">
+                            <div class="flex-1">
+                                <div class="font-bold">${item.name}</div>
+                                <div class="text-sm text-gray-500">${item.price}₽ × ${qty} = ${subtotal}₽</div>
+                            </div>
+                            <button type="button" data-action="remove" data-id="${item.id}" class="text-red-500 text-xl">🗑</button>
+                        </div>
+                    </div>`;
+                }
+
+                if (Object.keys(cart).length === 0) {
+                    html = '<p class="text-center text-gray-500 py-8">Корзина пуста</p>';
+                    checkoutBtn.disabled = true;
+                    cartForm.classList.add('hidden');
+                } else {
+                    checkoutBtn.disabled = false;
+                    cartForm.classList.remove('hidden');
+                }
+
+                cartItemsEl.innerHTML = html;
+                cartTotalEl.textContent = total > 0 ? '💰 Итого: ' + total + '₽' : '';
+                document.getElementById('cart-modal').classList.remove('hidden');
+            }
+
+            function closeCart() { document.getElementById('cart-modal').classList.add('hidden'); }
+
+            function proceedToCheckout() {
+                const guestName = document.getElementById('guest-name').value.trim();
+                const roomNumber = document.getElementById('room-number').value.trim();
+                const comment = document.getElementById('comment').value.trim();
+
+                if (!guestName) { alert('Введите ваше имя'); return; }
+                if (!roomNumber) { alert('Введите номер комнаты'); return; }
+
+                submitOrder(guestName, roomNumber, comment);
+            }
+
+            async function submitOrder(guestName, roomNumber, comment) {
+                const checkoutBtn = document.getElementById('checkout-btn');
+                checkoutBtn.disabled = true;
+                checkoutBtn.textContent = 'Отправка...';
+
+                const items = [];
+                for (const id in cart) items.push({ id: parseInt(id), qty: cart[id] });
+
+                const tgUser = getTelegramUser();
+                const telegramId = tgUser ? tgUser.id.toString() : null;
+
+                try {
+                    const response = await fetch(API_BASE + '/api/orders', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            guest_name: guestName,
+                            room_number: roomNumber,
+                            comment: comment || null,
+                            items: items,
+                            telegram_id: telegramId
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        showConfirmation(result);
+                        cart = {};
+                        updateCartUI();
+                        renderMenu();
+                        closeCart();
+                    } else {
+                        alert('Ошибка: ' + (result.detail || 'Неизвестная ошибка'));
+                    }
+                } catch (error) {
+                    alert('Ошибка сети. Попробуйте снова.');
+                }
+                checkoutBtn.disabled = false;
+                checkoutBtn.textContent = 'Оформить заказ';
+            }
+
+            function showConfirmation(result) {
+                const detailsEl = document.getElementById('confirmation-details');
+                let html = `<p><b>Заказ #${result.order_id}</b></p><p>👤 Гость: ${result.guest_name}</p><p>🏨 Комната: ${result.room_number}</p><hr class="my-2">`;
+                for (let i = 0; i < result.items.length; i++) {
+                    const item = result.items[i];
+                    html += `<div class="mb-2"><p><b>${item.name}</b> × ${item.qty} = ${item.subtotal}₽</p></div>`;
+                }
+                html += `<hr class="my-2"><p class="text-lg"><b>💰 Итого: ${result.total}₽</b></p>`;
+                detailsEl.innerHTML = html;
+                document.getElementById('confirmation-modal').classList.remove('hidden');
+            }
+
+            function closeConfirmation() {
+                document.getElementById('confirmation-modal').classList.add('hidden');
+                document.getElementById('guest-name').value = '';
+                document.getElementById('room-number').value = '';
+                document.getElementById('comment').value = '';
+            }
+
+            // --- Event Listeners ---
+            document.getElementById('menu-content').addEventListener('click', function (e) {
+                const btn = e.target.closest('button[data-action]');
+                if (!btn) return;
+                const action = btn.getAttribute('data-action');
+                const id = parseInt(btn.getAttribute('data-id'));
+                if (action === 'plus') changeQty(id, 1);
+                if (action === 'minus') changeQty(id, -1);
+            });
+
+            document.getElementById('cart-items').addEventListener('click', function (e) {
+                const btn = e.target.closest('button[data-action="remove"]');
+                if (!btn) return;
+                const id = parseInt(btn.getAttribute('data-id'));
+                delete cart[id];
+                updateCartUI();
+                openCart();
+            });
+
+            document.getElementById('cart-button').addEventListener('click', openCart);
+            document.getElementById('close-cart-btn').addEventListener('click', closeCart);
+            document.getElementById('checkout-btn').addEventListener('click', proceedToCheckout);
+            document.getElementById('close-confirm-btn').addEventListener('click', closeConfirmation);
+
+            // Initialize
+            loadMenu();
+
+            // Expand WebApp
+            if (window.Telegram && window.Telegram.WebApp) {
+                window.Telegram.WebApp.expand();
+            }
+        })();
+    </script>
+</body>
+
+</html>
