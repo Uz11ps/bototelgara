@@ -21,8 +21,19 @@ const App: React.FC = () => {
   }, []);
 
   const sendMenuMessage = (text: string) => {
+    console.log('[DEBUG] sendMenuMessage called with:', text);
     WebApp.sendData(JSON.stringify({ action: 'suggested_question', text }));
   };
+
+  const handleMenuChange = (newMenu: MenuKey) => {
+    console.log('[DEBUG] handleMenuChange called. Current:', currentMenu, '-> New:', newMenu);
+    setCurrentMenu(newMenu);
+    console.log('[DEBUG] State updated to:', newMenu);
+  };
+
+  useEffect(() => {
+    console.log('[DEBUG] currentMenu changed to:', currentMenu);
+  }, [currentMenu]);
 
   const handleServiceClick = (service: string) => {
     WebApp.sendData(JSON.stringify({ action: 'book_service', service }));
@@ -51,7 +62,12 @@ const App: React.FC = () => {
           {currentMenu === 'main' && (
             <>
               <button
-                onClick={() => setCurrentMenu('planning')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Planning button clicked!');
+                  handleMenuChange('planning');
+                }}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">✈️</span>
@@ -59,7 +75,12 @@ const App: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setCurrentMenu('staying')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Staying button clicked!');
+                  handleMenuChange('staying');
+                }}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🏨</span>
@@ -67,7 +88,12 @@ const App: React.FC = () => {
               </button>
 
               <button
-                onClick={() => setCurrentMenu('visual')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Visual menu button clicked!');
+                  handleMenuChange('visual');
+                }}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🗓️</span>
@@ -98,7 +124,12 @@ const App: React.FC = () => {
               ))}
 
               <button
-                onClick={() => setCurrentMenu('main')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Back button clicked from planning!');
+                  handleMenuChange('main');
+                }}
                 className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
               >
                 🔙 Назад
@@ -126,7 +157,12 @@ const App: React.FC = () => {
               ))}
 
               <button
-                onClick={() => setCurrentMenu('main')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Back button clicked from staying!');
+                  handleMenuChange('main');
+                }}
                 className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
               >
                 🔙 Назад
@@ -156,7 +192,12 @@ const App: React.FC = () => {
               ))}
 
               <button
-                onClick={() => setCurrentMenu('main')}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('[DEBUG] Back button clicked from visual!');
+                  handleMenuChange('main');
+                }}
                 className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
               >
                 🔙 Назад
