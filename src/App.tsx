@@ -8,20 +8,20 @@ const WebApp = (window as any).Telegram?.WebApp || {
   close: () => { },
 };
 
+type MenuKey = 'main' | 'planning' | 'staying' | 'visual';
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
-  // Стартовое меню с подсказками вопросов
-  const [showSuggestedQuestions, setShowSuggestedQuestions] = useState(true);
+  // Текущее вложенное меню на стартовом экране
+  const [currentMenu, setCurrentMenu] = useState<MenuKey>('main');
 
   useEffect(() => {
     WebApp.ready();
     WebApp.expand();
   }, []);
 
-  const handleWelcomeClick = (question: string) => {
-    WebApp.sendData(JSON.stringify({ action: 'suggested_question', text: question }));
-    // WebApp.sendData closes the app automatically, but we update state just in case
-    setShowSuggestedQuestions(false);
+  const sendMenuMessage = (text: string) => {
+    WebApp.sendData(JSON.stringify({ action: 'suggested_question', text }));
   };
 
   const handleServiceClick = (service: string) => {
@@ -29,8 +29,8 @@ const App: React.FC = () => {
     WebApp.close();
   };
 
-  // Показываем меню с подсказками только пока диалог "пустой"
-  if (showSuggestedQuestions) {
+  // Вложенное меню на стартовом экране (главное + подменю)
+  if (activeTab === 'home') {
     return (
       <div className="min-h-screen bg-sand font-sans flex flex-col justify-center items-center p-6 animate-fade-in relative overflow-hidden">
         {/* Background blobs */}
@@ -39,33 +39,103 @@ const App: React.FC = () => {
 
         <div className="text-center mb-10 z-10">
           <h1 className="text-3xl font-extrabold text-emerald-900 mb-2 tracking-tight">Отель «ГОРА»</h1>
-          <p className="text-slate-600 font-medium">Чем мы можем вам помочь?</p>
+          <p className="text-slate-600 font-medium">
+            {currentMenu === 'main' && 'Чем мы можем вам помочь?'}
+            {currentMenu === 'planning' && 'Я планирую поездку'}
+            {currentMenu === 'staying' && 'Я уже проживаю в отеле'}
+            {currentMenu === 'visual' && 'Визуальное меню'}
+          </p>
         </div>
 
         <div className="w-full max-w-sm space-y-4 z-10">
-          <button
-            onClick={() => handleWelcomeClick("Я планирую поездку")}
-            className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
-          >
-            <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">✈️</span>
-            <span>Я планирую поездку</span>
-          </button>
+          {currentMenu === 'main' && (
+            <>
+              <button
+                onClick={() => {
+                  // Сразу запускаем соответствующий сценарий в боте и переходим в подменю
+                  sendMenuMessage('Я планирую поездку');
+                  setCurrentMenu('planning');
+                }}
+                className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
+              >
+                <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">✈️</span>
+                <span>Я планирую поездку</span>
+              </button>
 
-          <button
-            onClick={() => handleWelcomeClick("Я уже проживаю в отеле")}
-            className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
-          >
-            <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🏨</span>
-            <span>Я уже проживаю в отеле</span>
-          </button>
+              <button
+                onClick={() => {
+                  sendMenuMessage('Я уже проживаю в отеле');
+                  setCurrentMenu('staying');
+                }}
+                className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
+              >
+                <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🏨</span>
+                <span>Я уже проживаю в отеле</span>
+              </button>
 
-          <button
-            onClick={() => handleWelcomeClick("Визуальное меню 🗓️")}
-            className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
-          >
-            <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🗓️</span>
-            <span>Визуальное меню 🗓️</span>
-          </button>
+              <button
+                onClick={() => setCurrentMenu('visual')}
+                className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
+              >
+                <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🗓️</span>
+                <span>Визуальное меню 🗓️</span>
+              </button>
+            </>
+          )}
+
+          {currentMenu === 'visual' && (
+            <>
+              {[
+                '🏨 Забронировать номер',
+                '🛏️ Номера и цены',
+                '🌲 Об отеле',
+                '🎉 Мероприятия и банкеты',
+                '📍 Как добраться',
+                '❓ Вопросы и ответы',
+                '🍽️ Ресторан',
+                '📞 Связаться с администратором',
+              ].map((label) => (
+                <button
+                  key={label}
+                  onClick={() => sendMenuMessage(label)}
+                  className="w-full glass-card p-4 text-left font-semibold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center"
+                >
+                  <span>{label}</span>
+                </button>
+              ))}
+
+              <button
+                onClick={() => setCurrentMenu('main')}
+                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
+              >
+                🔙 Назад
+              </button>
+            </>
+          )}
+
+          {currentMenu === 'planning' && (
+            <>
+              {/* Подменю для "Я планирую поездку" можно наполнить позже */}
+              <button
+                onClick={() => setCurrentMenu('main')}
+                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
+              >
+                🔙 Назад
+              </button>
+            </>
+          )}
+
+          {currentMenu === 'staying' && (
+            <>
+              {/* Подменю для "Я уже проживаю в отеле" можно наполнить позже */}
+              <button
+                onClick={() => setCurrentMenu('main')}
+                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
+              >
+                🔙 Назад
+              </button>
+            </>
+          )}
         </div>
       </div>
     );
