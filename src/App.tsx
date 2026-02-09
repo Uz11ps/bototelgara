@@ -8,11 +8,11 @@ const WebApp = (window as any).Telegram?.WebApp || {
   close: () => { },
 };
 
-type MenuKey = 'main' | 'planning' | 'staying' | 'visual';
+type MenuKey = 'main' | 'visual';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('home');
-  // Текущее вложенное меню на стартовом экране
+  // Какое меню показываем на стартовом экране
   const [currentMenu, setCurrentMenu] = useState<MenuKey>('main');
 
   useEffect(() => {
@@ -29,7 +29,7 @@ const App: React.FC = () => {
     WebApp.close();
   };
 
-  // Вложенное меню на стартовом экране (главное + подменю)
+  // Вложенное меню на стартовом экране (главное + подменю "Визуальное меню")
   if (activeTab === 'home') {
     return (
       <div className="min-h-screen bg-sand font-sans flex flex-col justify-center items-center p-6 animate-fade-in relative overflow-hidden">
@@ -41,8 +41,6 @@ const App: React.FC = () => {
           <h1 className="text-3xl font-extrabold text-emerald-900 mb-2 tracking-tight">Отель «ГОРА»</h1>
           <p className="text-slate-600 font-medium">
             {currentMenu === 'main' && 'Чем мы можем вам помочь?'}
-            {currentMenu === 'planning' && 'Я планирую поездку'}
-            {currentMenu === 'staying' && 'Я уже проживаю в отеле'}
             {currentMenu === 'visual' && 'Визуальное меню'}
           </p>
         </div>
@@ -51,11 +49,7 @@ const App: React.FC = () => {
           {currentMenu === 'main' && (
             <>
               <button
-                onClick={() => {
-                  // Сразу запускаем соответствующий сценарий в боте и переходим в подменю
-                  sendMenuMessage('Я планирую поездку');
-                  setCurrentMenu('planning');
-                }}
+                onClick={() => sendMenuMessage('Я планирую поездку')}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">✈️</span>
@@ -63,10 +57,7 @@ const App: React.FC = () => {
               </button>
 
               <button
-                onClick={() => {
-                  sendMenuMessage('Я уже проживаю в отеле');
-                  setCurrentMenu('staying');
-                }}
+                onClick={() => sendMenuMessage('Я уже проживаю в отеле')}
                 className="w-full glass-card p-5 text-left font-bold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center group"
               >
                 <span className="text-2xl mr-4 group-hover:scale-110 transition-transform duration-300">🏨</span>
@@ -104,30 +95,6 @@ const App: React.FC = () => {
                 </button>
               ))}
 
-              <button
-                onClick={() => setCurrentMenu('main')}
-                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
-              >
-                🔙 Назад
-              </button>
-            </>
-          )}
-
-          {currentMenu === 'planning' && (
-            <>
-              {/* Подменю для "Я планирую поездку" можно наполнить позже */}
-              <button
-                onClick={() => setCurrentMenu('main')}
-                className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
-              >
-                🔙 Назад
-              </button>
-            </>
-          )}
-
-          {currentMenu === 'staying' && (
-            <>
-              {/* Подменю для "Я уже проживаю в отеле" можно наполнить позже */}
               <button
                 onClick={() => setCurrentMenu('main')}
                 className="w-full glass-card p-4 text-center font-bold text-slate-700 hover:bg-white/70 active:scale-[0.98] transition-all shadow-md hover:shadow-lg"
