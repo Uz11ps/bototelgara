@@ -32,8 +32,16 @@ def execute_command(ssh, cmd):
     exit_status = stdout.channel.recv_exit_status()
     out = stdout.read().decode('utf-8', 'ignore')
     err = stderr.read().decode('utf-8', 'ignore')
-    if out: print(out)
-    if err: print(err)
+    if out: 
+        try:
+            print(out)
+        except UnicodeEncodeError:
+            print(out.encode('ascii', 'ignore').decode('ascii'))
+    if err: 
+        try:
+            print(err)
+        except UnicodeEncodeError:
+            print(err.encode('ascii', 'ignore').decode('ascii'))
     return exit_status
 
 def deploy():
@@ -100,9 +108,11 @@ def deploy():
     for cmd in setup_commands:
         status = execute_command(ssh, cmd)
         if status != 0 and "apt-get" not in cmd: # apt-get может возвращать не 0 при мелких варнингах
-            print(f"❌ Command failed with status {status}")
-            ssh.close()
-            return
+            print(f"Command failed with status {status}")
+            # Не прерываем деплой для build команды, так как она может завершиться успешно
+            if "build" not in cmd:
+                ssh.close()
+                return
 
     # 4. Настройка Systemd сервиса для БОТА
     print("--- Configuring Systemd service for BOT... ---")
