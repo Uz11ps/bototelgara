@@ -5,7 +5,7 @@ Provides hotel room availability and booking data
 import os
 import logging
 from typing import Dict, List, Optional, Any
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from dataclasses import dataclass
 import aiohttp
 
@@ -25,6 +25,25 @@ class RoomVariant:
     images: List[str]
     rate_id: int
     rate_name: str
+
+
+@dataclass
+class HotelStats:
+    """Hotel statistics for admin dashboard"""
+    total_rooms: int
+    occupied_rooms: int
+    available_rooms: int
+    occupancy_rate: float
+    last_updated: datetime
+
+
+@dataclass
+class RoomAvailability:
+    """Room availability info for admin dashboard"""
+    room_name: str
+    is_available: bool
+    price: Optional[float]
+    capacity: Optional[int]
 
 
 @dataclass
@@ -118,6 +137,14 @@ class ShelterClient:
             if isinstance(e, ShelterAPIError):
                 raise
             raise ShelterAPIError(message=f"Unexpected error: {str(e)}")
+
+    async def ping(self) -> str:
+        """Test API connection using getHotelParams"""
+        try:
+            await self.get_hotel_params()
+            return "OK"
+        except Exception as e:
+            raise ShelterAPIError(message=f"Ping failed: {str(e)}")
 
     async def get_hotel_params(self) -> Dict[str, Any]:
         """
@@ -219,6 +246,77 @@ class ShelterClient:
             "reason": reason or "Cancelled via Telegram Bot"
         }
         return await self._make_request("/OnlineWidget3/online/v3/annulOrder", data=data)
+
+    async def get_hotel_stats(self) -> HotelStats:
+        """
+        Get hotel stats using available endpoints (implied logic since no direct stats endpoint)
+        """
+        # Since there is no direct "stats" endpoint in the widget API,
+        # we will fetch hotel params to get total categories and make a sample search
+        # to estimate availability. This is a BEST EFFORT implementation.
+        
+        params = await self.get_hotel_params()
+        categories = params.get("categories", [])
+        
+        # Estimate total rooms (Widget API doesn't give total count per category, assume 10 per cat for mockup/estimation if missing)
+        # Realistically, we can't know total rooms via Widget API easily.
+        # We will use the count of categories as a proxy or fixed number if not available.
+        total_rooms = len(categories) * 10 if categories else 50
+        
+        # Check availability for TOMORROW
+        check_in = date.today()
+        check_out = check_in + timedelta(days=1)
+        variants = await self.get_variants(check_in, check_out, adults=2)
+        
+        available_rooms = sum(v.available_count for v in variants)
+        occupied_rooms = max(0, total_rooms - available_rooms)
+        occupancy_rate = occupied_rooms / total_rooms if total_rooms > 0 else 0.0
+        
+        return HotelStats(
+            total_rooms=total_rooms,
+            occupied_rooms=occupied_rooms,
+            available_rooms=available_rooms,
+            occupancy_rate=occupancy_rate,
+            last_updated=datetime.now()
+        )
+
+    async def get_room_availability(self) -> List[RoomAvailability]:
+        """
+        Get availability by category
+        """
+        check_in = date.today()
+        check_out = check_in + timedelta(days=1)
+        variants = await self.get_variants(check_in, check_out, adults=2)
+        
+        availability_list = []
+        # Create a map of updated availability from search
+        variant_map = {v.category_name: v for v in variants}
+        
+        # Get all categories to show even those with 0 availability
+        params = await self.get_hotel_params()
+        categories = params.get("categories", [])
+        
+        for cat in categories:
+            name = cat.get("name", "Unknown")
+            variant = variant_map.get(name)
+            
+            is_available = False
+            price = None
+            capacity = None
+            
+            if variant:
+                is_available = variant.available_count > 0
+                price = variant.price
+                capacity = variant.capacity
+            
+            availability_list.append(RoomAvailability(
+                room_name=name,
+                is_available=is_available,
+                price=price,
+                capacity=capacity
+            ))
+            
+        return availability_list
 
 
 # Singleton instance

@@ -23,34 +23,45 @@ router = Router()
 
 @router.callback_query(F.data == "back_to_in_house")
 async def handle_back_to_in_house(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     await state.set_state(FlowState.in_house_menu)
     text = content_manager.get_text("menus.in_house_title")
-    await callback.message.edit_text(text, reply_markup=build_in_house_menu())
-    await callback.answer()
+    from bot.keyboards.main_menu import build_in_house_reply_keyboard
+    try:
+        await callback.message.edit_text(text, reply_markup=build_in_house_menu())
+    except Exception:
+        pass  # Ignore if message unchanged
+    # Обновляем slash-меню
+    await callback.message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_in_house_reply_keyboard()
+    )
 
 
 @router.callback_query(FlowState.in_house_menu)
 async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     key = callback.data or ""
 
     if key == "in_room_service":
         await state.set_state(FlowState.room_service_choosing_branch)
         text = content_manager.get_text("room_service.what_do_you_need")
+        from bot.keyboards.main_menu import build_room_service_reply_keyboard
         await callback.message.answer(text, reply_markup=build_room_service_menu())
-        await callback.answer()
+        # Обновляем slash-меню
+        await callback.message.answer(
+            "Используйте кнопки ниже для выбора:",
+            reply_markup=build_room_service_reply_keyboard()
+        )
         return
 
     if key == "in_restaurant":
-        now = datetime.now().time()
-        if now >= time(18, 0):
-            await state.set_state(FlowState.breakfast_after_deadline_choice)
-            text = content_manager.get_text("breakfast.too_late")
-            await callback.message.answer(text, reply_markup=build_breakfast_after_deadline_menu())
-        else:
-            await state.set_state(FlowState.breakfast_entry)
-            text = content_manager.get_text("breakfast.intro")
-            await callback.message.answer(text, reply_markup=build_breakfast_entry_menu())
-        await callback.answer()
+        # Handled by menu_order router, but update keyboard here
+        from bot.keyboards.main_menu import build_menu_reply_keyboard
+        await callback.message.answer(
+            "Используйте кнопки ниже для выбора категории:",
+            reply_markup=build_menu_reply_keyboard()
+        )
         return
 
     if key == "in_additional_services":
@@ -59,11 +70,16 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
 
     if key == "in_admin":
         await state.set_state(FlowState.contact_admin_type)
+        from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
         await callback.message.answer(
             "Выберите, кто вы:",
             reply_markup=build_contact_admin_type_menu()
         )
-        await callback.answer()
+        # Обновляем slash-меню
+        await callback.message.answer(
+            "Используйте кнопки ниже для выбора:",
+            reply_markup=build_admin_contact_reply_keyboard()
+        )
         return
 
     if key == "in_guide":
@@ -98,27 +114,25 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
         content_manager.get_text("menus.in_house_title"),
         reply_markup=build_in_house_menu(),
     )
-    await callback.answer()
 
 
 @router.callback_query(FlowState.breakfast_entry)
 async def handle_breakfast_entry(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     key = callback.data or ""
 
     if key == "breakfast_composition":
         text = content_manager.get_text("breakfast.composition")
-        await callback.message.answer(text)
+        await callback.message.answer(text, parse_mode="HTML")
         await callback.message.answer(
             content_manager.get_text("breakfast.intro"),
             reply_markup=build_breakfast_entry_menu(),
         )
-        await callback.answer()
         return
 
     if key == "breakfast_order":
         await state.set_state(FlowState.breakfast_persons)
         await callback.message.answer(content_manager.get_text("breakfast.ask_persons"))
-        await callback.answer()
 
 
 @router.message(FlowState.breakfast_persons)
@@ -151,6 +165,7 @@ async def handle_breakfast_persons(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(FlowState.breakfast_confirm)
 async def handle_breakfast_confirm(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     from aiogram import Bot
 
     from db.models import TicketType
@@ -165,11 +180,9 @@ async def handle_breakfast_confirm(callback: CallbackQuery, state: FSMContext) -
             content_manager.get_text("breakfast.order_cancelled"),
             reply_markup=build_in_house_menu(),
         )
-        await callback.answer()
         return
 
     if key != "breakfast_confirm_yes":
-        await callback.answer()
         return
 
     data = await state.get_data()
@@ -212,20 +225,26 @@ async def handle_breakfast_confirm(callback: CallbackQuery, state: FSMContext) -
     confirmation = confirmation_template.format(
         ticket_id=ticket.id,
         persons=persons,
-        delivery_window="9:00–10:00",
+        total_price=total_price,
     )
-    await callback.message.answer(confirmation)
+    await callback.message.answer(confirmation, parse_mode="HTML")
 
     bot: Bot = callback.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await callback.message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
     await callback.answer()
 
 
 @router.callback_query(FlowState.contact_admin_type)
 async def handle_contact_admin_type(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle selection of user type when contacting admin."""
+    await callback.answer()  # Acknowledge immediately
     from aiogram import Bot
     from db.models import TicketType
     from services.admins import notify_admins_about_ticket
@@ -240,12 +259,10 @@ async def handle_contact_admin_type(callback: CallbackQuery, state: FSMContext) 
         user_type = "Заинтересованный человек"
         await state.update_data(contact_admin_type="interested")
     else:
-        await callback.answer()
         return
     
     await state.set_state(FlowState.contact_admin_message)
     await callback.message.answer(f"Вы выбрали: {user_type}\n\nНапишите ваш вопрос или запрос:")
-    await callback.answer()
 
 
 @router.message(FlowState.contact_admin_message)
@@ -281,8 +298,13 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
         )
     except TicketRateLimitExceededError:
         warning = "Вы отправили слишком много заявок. Пожалуйста, подождите."
+        from bot.keyboards.main_menu import build_main_reply_keyboard
         await message.answer(warning)
         await state.clear()
+        await message.answer(
+            "Используйте кнопки ниже для навигации:",
+            reply_markup=build_main_reply_keyboard()
+        )
         return
     
     confirmation = f"Спасибо, ваша заявка #{ticket.id} принята. Администратор свяжется с вами в ближайшее время."
@@ -291,11 +313,17 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
     
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
 
 
 @router.callback_query(FlowState.breakfast_after_deadline_choice)
 async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     from aiogram import Bot
 
     from db.models import TicketType
@@ -310,11 +338,9 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
             content_manager.get_text("breakfast.after_deadline_cancelled"),
             reply_markup=build_in_house_menu(),
         )
-        await callback.answer()
         return
 
     if key != "breakfast_contact_admin":
-        await callback.answer()
         return
 
     payload = {
@@ -335,8 +361,13 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
         )
     except TicketRateLimitExceededError:
         warning = content_manager.get_text("tickets.rate_limited")
+        from bot.keyboards.main_menu import build_main_reply_keyboard
         await callback.message.answer(warning)
         await state.clear()
+        await callback.message.answer(
+            "Используйте кнопки ниже для навигации:",
+            reply_markup=build_main_reply_keyboard()
+        )
         await callback.answer()
         return
 
@@ -346,5 +377,9 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
     bot: Bot = callback.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
-    await callback.answer()
+    await callback.message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )

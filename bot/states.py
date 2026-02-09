@@ -51,3 +51,20 @@ class FlowState(StatesGroup):
     booking_confirm = State()
 
     admin_reply = State()
+
+    # Menu ordering flow with cart
+    menu_category_choice = State()
+    menu_item_selection = State()
+    menu_cart_review = State()
+    menu_guest_name = State()  # Ask guest name
+    menu_room_number = State()  # Ask room number
+    menu_guest_comment = State()
+    menu_confirm_order = State()
+
+    # Guest booking capture for cleaning schedule
+    guest_room_number = State()
+    guest_check_in_date = State()
+    guest_check_out_date = State()
+
+    # Cleaning schedule selection
+    cleaning_time_selection = State()

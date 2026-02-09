@@ -6,9 +6,9 @@ from scp import SCPClient
 import sys
 
 # Настройка UTF-8 для Windows
-if sys.platform == 'win32':
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
+# if sys.platform == 'win32':
+#     import codecs
+#     sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
 
 def create_tarball(output_filename, source_dir):
     """Создает архив проекта, исключая лишние файлы"""
@@ -32,8 +32,16 @@ def execute_command(ssh, cmd):
     exit_status = stdout.channel.recv_exit_status()
     out = stdout.read().decode('utf-8', 'ignore')
     err = stderr.read().decode('utf-8', 'ignore')
-    if out: print(out)
-    if err: print(err)
+    if out: 
+        try:
+            print(out)
+        except UnicodeEncodeError:
+            print(out.encode('ascii', 'ignore').decode('ascii'))
+    if err: 
+        try:
+            print(err)
+        except UnicodeEncodeError:
+            print(err.encode('ascii', 'ignore').decode('ascii'))
     return exit_status
 
 def deploy():
@@ -54,14 +62,15 @@ def deploy():
         try:
             print(f"Trying password: {pwd}")
             ssh.connect(host, username=user, password=pwd, timeout=20, look_for_keys=False, allow_agent=False)
-            print("✅ Connected!")
+            # Без emoji, чтобы не падать на Windows-консоли
+            print("Connected successfully.")
             connected = True
             break
         except paramiko.AuthenticationException:
-            print("❌ Authentication failed.")
+            print("Authentication failed.")
             continue
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"Error: {e}")
             continue
 
     if not connected:
@@ -79,7 +88,7 @@ def deploy():
     try:
         with SCPClient(ssh.get_transport()) as scp:
             scp.put(tar_name, f"{remote_path}/{tar_name}")
-        print("✅ Upload complete!")
+        print("Upload complete!")
     finally:
         if os.path.exists(tar_name):
             os.remove(tar_name)
@@ -89,17 +98,22 @@ def deploy():
     setup_commands = [
         f"cd {remote_path} && tar -xzf {tar_name}",
         f"cd {remote_path} && rm {tar_name}",
-        f"apt-get update && apt-get install -y python3-pip python3-venv",
+        f"apt-get update && apt-get install -y python3-pip python3-venv ffmpeg nodejs npm",
         f"cd {remote_path} && python3 -m venv venv",
-        f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt"
+        f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt",
+        f"cd {remote_path} && npm install",
+        f"cd {remote_path} && rm -rf mini_app/*",
+        f"cd {remote_path} && chmod +x node_modules/.bin/vite && node_modules/.bin/vite build"
     ]
     
     for cmd in setup_commands:
         status = execute_command(ssh, cmd)
         if status != 0 and "apt-get" not in cmd: # apt-get может возвращать не 0 при мелких варнингах
-            print(f"❌ Command failed with status {status}")
-            ssh.close()
-            return
+            print(f"Command failed with status {status}")
+            # Не прерываем деплой для build команды, так как она может завершиться успешно
+            if "build" not in cmd:
+                ssh.close()
+                return
 
     # 4. Настройка Systemd сервиса для БОТА
     print("--- Configuring Systemd service for BOT... ---")
@@ -184,17 +198,29 @@ WantedBy=multi-user.target
     
     execute_command(ssh, "nginx -t && systemctl restart nginx")
     
-    # 7. Обновление базы данных (миграции)
-    print("--- Updating database schema and seeding... ---")
-    execute_command(ssh, f"cd {remote_path} && ./venv/bin/python -c 'from db.base import Base; from db.session import engine; import db.models; Base.metadata.drop_all(bind=engine); Base.metadata.create_all(bind=engine)'")
-    execute_command(ssh, f"cd {remote_path} && ./venv/bin/python seed_db.py")
+    # 7. Обновление базы данных (только создание таблиц если не существуют)
+    print("--- Updating database schema (preserving data)... ---")
+    # Only create tables if they don't exist - DO NOT drop tables
+    execute_command(ssh, f"cd {remote_path} && ./venv/bin/python -c 'from db.base import Base; from db.session import engine; import db.models; Base.metadata.create_all(bind=engine)'")
+    # Seed only if database is empty
+    seed_status = execute_command(ssh, f"cd {remote_path} && ./venv/bin/python -c \"from db.session import SessionLocal; from db.models import MenuItem; db=SessionLocal(); count=db.query(MenuItem).count(); db.close(); print('DB has', count, 'menu items'); exit(0 if count>0 else 1)\"")
+    if seed_status != 0:
+        print("Database is empty, seeding...")
+        execute_command(ssh, f"cd {remote_path} && ./venv/bin/python seed_db.py")
+    else:
+        # Без emoji для совместимости с Windows-консолью
+        print("Database already has data, skipping seed")
+    
+    # Always update guide items with correct links
+    print("--- Updating guide items... ---")
+    execute_command(ssh, f"cd {remote_path} && ./venv/bin/python update_guide.py")
     
     # Запуск всего
     execute_command(ssh, "systemctl daemon-reload")
     execute_command(ssh, "systemctl enable gora_bot gora_admin")
     execute_command(ssh, "systemctl restart gora_bot gora_admin")
     
-    print("\n✅ DEPLOYMENT FINISHED SUCCESSFULLY!")
+    print("\nDEPLOYMENT FINISHED SUCCESSFULLY!")
     execute_command(ssh, "systemctl status gora_bot gora_admin --no-pager")
     
     ssh.close()

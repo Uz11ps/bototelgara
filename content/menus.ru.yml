@@ -3,6 +3,8 @@ segment_menu:
     callback_data: "segment_pre_arrival"
   - label: "Я уже проживаю в отеле"
     callback_data: "segment_in_house"
+  - label: "Визуальное меню 📱"
+    web_app: "https://gora.ru.net/menu"
 
 pre_arrival_menu:
   - label: "🏨 Забронировать номер"
@@ -21,10 +23,10 @@ pre_arrival_menu:
     callback_data: "pre_restaurant"
   - label: "📞 Связаться с администратором"
     callback_data: "pre_contact_admin"
+  - label: "↩️ Назад"
+    callback_data: "back_to_segment"
 
     in_house_menu:
-      - label: "🛎 Рум‑сервис"
-        callback_data: "in_room_service"
       - label: "🍳 Завтраки"
         callback_data: "in_restaurant"
       - label: "🗺 Гид по Сортавала"
@@ -35,6 +37,8 @@ pre_arrival_menu:
         callback_data: "in_sos"
       - label: "👤 Личный кабинет"
         callback_data: "in_loyalty"
+      - label: "📱 Визуальное меню"
+        web_app: "https://gora.ru.net/menu"
       - label: "📞 Администратор"
         callback_data: "in_admin"
       - label: "↩️ Назад"

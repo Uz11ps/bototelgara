@@ -133,7 +133,7 @@ LOG_LEVEL="INFO"
      - Техническая проблема
      - Дополнительно в номер
      - Уборка номера
-     - Подушечное меню
+     - Меню подушек
      - Другое
    - Each branch launches a short dialog and **creates a ticket**.
 

@@ -30,16 +30,17 @@ def build_calendar_keyboard(current_date: date, prefix: str) -> InlineKeyboardMa
 @router.callback_query(F.data == "pre_book_room")
 async def start_booking(callback: CallbackQuery, state: FSMContext) -> None:
     """Start the booking process by asking for check-in date"""
+    await callback.answer()  # Acknowledge immediately
     await state.set_state(FlowState.booking_check_in)
     await callback.message.answer(
         "Выберите дату заезда:",
         reply_markup=build_calendar_keyboard(date.today(), "checkin")
     )
-    await callback.answer()
 
 @router.callback_query(FlowState.booking_check_in, F.data.startswith("checkin:"))
 async def select_check_in(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle check-in date selection and ask for check-out date"""
+    await callback.answer()  # Acknowledge immediately
     check_in_str = callback.data.split(":")[1]
     check_in = date.fromisoformat(check_in_str)
     await state.update_data(check_in=check_in_str)
@@ -49,11 +50,11 @@ async def select_check_in(callback: CallbackQuery, state: FSMContext) -> None:
         f"Дата заезда: {check_in.strftime('%d.%m.%Y')}\nВыберите дату выезда:",
         reply_markup=build_calendar_keyboard(check_in + timedelta(days=1), "checkout")
     )
-    await callback.answer()
 
 @router.callback_query(FlowState.booking_check_out, F.data.startswith("checkout:"))
 async def select_check_out(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle check-out date selection and ask for number of adults"""
+    await callback.answer()  # Acknowledge immediately
     check_out_str = callback.data.split(":")[1]
     await state.update_data(check_out=check_out_str)
     
@@ -66,11 +67,11 @@ async def select_check_out(callback: CallbackQuery, state: FSMContext) -> None:
         "Сколько взрослых гостей?",
         reply_markup=builder.as_markup()
     )
-    await callback.answer()
 
 @router.callback_query(FlowState.booking_adults, F.data.startswith("adults:"))
 async def select_adults(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle adults selection and search for variants via Shelter API"""
+    await callback.answer()  # Acknowledge immediately
     adults = int(callback.data.split(":")[1])
     await state.update_data(adults=adults)
     
@@ -106,12 +107,11 @@ async def select_adults(callback: CallbackQuery, state: FSMContext) -> None:
             
     except ShelterAPIError as e:
         await callback.message.answer(f"Ошибка при поиске номеров: {e.message or 'Неизвестная ошибка'}")
-    
-    await callback.answer()
 
 @router.callback_query(FlowState.booking_select_variant, F.data.startswith("variant:"))
 async def select_variant(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle variant selection and ask for upselling services"""
+    await callback.answer()  # Acknowledge immediately
     signature_id = callback.data.split(":")[1]
     await state.update_data(signature_id=signature_id)
     
@@ -122,21 +122,19 @@ async def select_variant(callback: CallbackQuery, state: FSMContext) -> None:
         [InlineKeyboardButton(text="⏩ Пропустить", callback_data="upsell_skip")]
     ])
     await callback.message.answer("✨ <b>Сделайте ваш отдых комфортнее!</b>\nЖелаете добавить дополнительные услуги?", reply_markup=keyboard, parse_mode="HTML")
-    await callback.answer()
 
 @router.callback_query(F.data.startswith("upsell_"))
 async def handle_upselling(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     upsell = callback.data.replace("upsell_", "")
     data = await state.get_data()
     upsells = data.get("upsells", [])
     if upsell != "skip":
         upsells.append(upsell)
         await state.update_data(upsells=upsells)
-        await callback.answer(f"Добавлено: {upsell}", show_alert=True)
     
     await state.set_state(FlowState.booking_guest_name)
     await callback.message.answer("Введите ваше имя и фамилию:")
-    await callback.answer()
 
 @router.message(FlowState.booking_guest_name)
 async def enter_guest_name(message: Message, state: FSMContext) -> None:
@@ -179,6 +177,7 @@ async def enter_guest_email(message: Message, state: FSMContext) -> None:
 @router.callback_query(FlowState.booking_confirm, F.data == "confirm_booking")
 async def confirm_booking(callback: CallbackQuery, state: FSMContext) -> None:
     """Finalize booking via Shelter API"""
+    await callback.answer()  # Acknowledge immediately
     data = await state.get_data()
     
     customer = {
@@ -216,11 +215,10 @@ async def confirm_booking(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.message.answer(f"Ошибка при создании бронирования: {e.message or 'Неизвестная ошибка'}")
     
     await state.clear()
-    await callback.answer()
 
 @router.callback_query(F.data == "cancel_booking")
 async def cancel_booking(callback: CallbackQuery, state: FSMContext) -> None:
     """Cancel booking flow"""
+    await callback.answer()  # Acknowledge immediately
     await state.clear()
     await callback.message.answer("Бронирование отменено.")
-    await callback.answer()

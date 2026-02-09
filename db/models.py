@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, date
 from enum import Enum
 
-from sqlalchemy import JSON, Column, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Column, Date, DateTime, Enum as SAEnum, ForeignKey, Integer, String, Text, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.base import Base
@@ -25,7 +25,21 @@ class TicketType(str, Enum):
     STAFF_TASK = "STAFF_TASK"
     CHECK_IN = "CHECK_IN"
     FEEDBACK = "FEEDBACK"
+    MENU_ORDER = "MENU_ORDER"
+    CLEANING = "CLEANING"
     OTHER = "OTHER"
+
+
+class MenuCategory(str, Enum):
+    BREAKFAST = "breakfast"
+    LUNCH = "lunch"
+    DINNER = "dinner"
+
+
+class StaffRole(str, Enum):
+    MAID = "maid"
+    TECHNICIAN = "technician"
+    ADMINISTRATOR = "administrator"
 
 
 class TicketMessageSender(str, Enum):
@@ -92,12 +106,15 @@ class MenuItem(Base):
     __tablename__ = "menu_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
-    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String(64), nullable=False, index=True)  # breakfast, lunch, dinner
+    category_type: Mapped[MenuCategory] = mapped_column(SAEnum(MenuCategory), default=MenuCategory.BREAKFAST, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    composition: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{name: "Яйца", quantity: 2, unit: "шт"}, ...]
     price: Mapped[float] = mapped_column(Integer, nullable=False)
     image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
     is_available: Mapped[bool] = mapped_column(default=True, nullable=False)
+    admin_comment: Mapped[str | None] = mapped_column(Text, nullable=True)  # Comment for guests
 
 
 class GuideItem(Base):
@@ -133,3 +150,53 @@ class AdminUser(Base):
     telegram_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+
+class Staff(Base):
+    """Staff members with role-based access."""
+    __tablename__ = "staff"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    telegram_id: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)  # Optional, can identify by phone
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)  # Required, unique identifier
+    role: Mapped[StaffRole] = mapped_column(SAEnum(StaffRole), nullable=False)
+    permissions: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {edit_menu: true, edit_guide: true, ...}
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class GuestBooking(Base):
+    """Track guest bookings locally for cleaning schedule."""
+    __tablename__ = "guest_bookings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    telegram_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    room_number: Mapped[str] = mapped_column(String(32), nullable=False)
+    check_in_date: Mapped[date] = mapped_column(Date, nullable=False)
+    check_out_date: Mapped[date] = mapped_column(Date, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    cleaning_requests: Mapped[list["CleaningRequest"]] = relationship("CleaningRequest", back_populates="guest_booking")
+
+
+class CleaningRequestStatus(str, Enum):
+    PENDING = "PENDING"
+    CONFIRMED = "CONFIRMED"
+    COMPLETED = "COMPLETED"
+    DECLINED = "DECLINED"
+
+
+class CleaningRequest(Base):
+    """Track daily cleaning schedule choices."""
+    __tablename__ = "cleaning_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    guest_booking_id: Mapped[int] = mapped_column(ForeignKey("guest_bookings.id"), nullable=False, index=True)
+    requested_date: Mapped[date] = mapped_column(Date, nullable=False)
+    requested_time_slot: Mapped[str | None] = mapped_column(String(32), nullable=True)  # e.g., "12:00-13:00" or None if declined
+    status: Mapped[CleaningRequestStatus] = mapped_column(SAEnum(CleaningRequestStatus), default=CleaningRequestStatus.PENDING)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    guest_booking: Mapped[GuestBooking] = relationship("GuestBooking", back_populates="cleaning_requests")

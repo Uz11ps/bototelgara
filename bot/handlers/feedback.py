@@ -33,11 +33,11 @@ async def start_feedback_manual(message: Message, state: FSMContext) -> None:
 
 @router.callback_query(FlowState.feedback_rating, F.data.startswith("rating_"))
 async def handle_feedback_rating(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     rating = callback.data.split("_")[1]
     await state.update_data(feedback_rating=rating)
     await state.set_state(FlowState.feedback_liked)
-    await callback.message.edit_text("<b>Что вам особенно понравилось во время пребывания?</b>")
-    await callback.answer()
+    await callback.message.edit_text("<b>Что вам особенно понравилось во время пребывания?</b>", parse_mode="HTML")
 
 @router.message(FlowState.feedback_liked)
 async def handle_feedback_liked(message: Message, state: FSMContext) -> None:
@@ -60,11 +60,11 @@ async def handle_feedback_improvements(message: Message, state: FSMContext) -> N
 
 @router.callback_query(FlowState.feedback_recommend)
 async def handle_feedback_recommend(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately
     recommend = "Да" if callback.data == "recommend_yes" else "Нет"
     await state.update_data(feedback_recommend=recommend)
     await state.set_state(FlowState.feedback_comments)
-    await callback.message.edit_text("<b>Есть ли дополнительные комментарии или пожелания?</b>")
-    await callback.answer()
+    await callback.message.edit_text("<b>Есть ли дополнительные комментарии или пожелания?</b>", parse_mode="HTML")
 
 @router.message(FlowState.feedback_comments)
 async def handle_feedback_finalize(message: Message, state: FSMContext) -> None:

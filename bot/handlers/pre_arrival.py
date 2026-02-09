@@ -18,16 +18,22 @@ async def handle_pre_arrival_menu(callback: CallbackQuery, state: FSMContext) ->
 
     For Milestone A we respond with simple informational texts from content.
     """
+    await callback.answer()  # Acknowledge immediately to prevent freezing
 
     key = callback.data or ""
     
     if key == "pre_contact_admin":
         await state.set_state(FlowState.contact_admin_type)
+        from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
         await callback.message.answer(
             "Выберите, кто вы:",
             reply_markup=build_contact_admin_type_menu()
         )
-        await callback.answer()
+        # Обновляем slash-меню
+        await callback.message.answer(
+            "Используйте кнопки ниже для выбора:",
+            reply_markup=build_admin_contact_reply_keyboard()
+        )
         return
     
     mapping = {
@@ -42,7 +48,6 @@ async def handle_pre_arrival_menu(callback: CallbackQuery, state: FSMContext) ->
 
     text_key = mapping.get(key)
     if not text_key:
-        await callback.answer()
         return
 
     text = content_manager.get_text(text_key)
@@ -51,12 +56,12 @@ async def handle_pre_arrival_menu(callback: CallbackQuery, state: FSMContext) ->
         content_manager.get_text("menus.pre_arrival_title"),
         reply_markup=build_pre_arrival_menu(),
     )
-    await callback.answer()
 
 
 @router.callback_query(FlowState.contact_admin_type)
 async def handle_contact_admin_type_pre_arrival(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle selection of user type when contacting admin (from pre-arrival menu)."""
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     from aiogram import Bot
     from db.models import TicketType
     from services.admins import notify_admins_about_ticket
@@ -71,12 +76,10 @@ async def handle_contact_admin_type_pre_arrival(callback: CallbackQuery, state: 
         user_type = "Заинтересованный человек"
         await state.update_data(contact_admin_type="interested")
     else:
-        await callback.answer()
         return
     
     await state.set_state(FlowState.contact_admin_message)
     await callback.message.answer(f"Вы выбрали: {user_type}\n\nНапишите ваш вопрос или запрос:")
-    await callback.answer()
 
 
 @router.message(FlowState.contact_admin_message)
@@ -112,8 +115,13 @@ async def handle_contact_admin_message_pre_arrival(message: Message, state: FSMC
         )
     except TicketRateLimitExceededError:
         warning = "Вы отправили слишком много заявок. Пожалуйста, подождите."
+        from bot.keyboards.main_menu import build_main_reply_keyboard
         await message.answer(warning)
         await state.clear()
+        await message.answer(
+            "Используйте кнопки ниже для навигации:",
+            reply_markup=build_main_reply_keyboard()
+        )
         return
     
     confirmation = f"Спасибо, ваша заявка #{ticket.id} принята. Администратор свяжется с вами в ближайшее время."
@@ -122,4 +130,9 @@ async def handle_contact_admin_message_pre_arrival(message: Message, state: FSMC
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
     
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )

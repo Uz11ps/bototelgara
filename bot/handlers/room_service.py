@@ -16,6 +16,7 @@ router = Router()
 
 @router.callback_query(FlowState.room_service_choosing_branch)
 async def choose_room_service_branch(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     key = callback.data or ""
 
     if key == "rs_technical_problem":
@@ -38,8 +39,6 @@ async def choose_room_service_branch(callback: CallbackQuery, state: FSMContext)
         await state.set_state(FlowState.room_service_room_number)
         await state.update_data(service_branch="other")
         await callback.message.answer("Укажите номер вашей комнаты:")
-
-    await callback.answer()
 
 
 @router.message(FlowState.room_service_room_number)
@@ -113,7 +112,12 @@ async def room_service_technical_details(message: Message, state: FSMContext) ->
     except TicketRateLimitExceededError:
         warning = content_manager.get_text("tickets.rate_limited")
         await message.answer(warning)
-        await state.clear()
+        from bot.keyboards.main_menu import build_main_reply_keyboard
+    await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
         return
 
     confirmation = content_manager.get_text("tickets.created_confirmation")
@@ -124,7 +128,12 @@ async def room_service_technical_details(message: Message, state: FSMContext) ->
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
 
 
 @router.message(FlowState.room_service_extra_item)
@@ -173,7 +182,12 @@ async def room_service_extra_quantity(message: Message, state: FSMContext) -> No
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
 
 
 @router.message(FlowState.room_service_cleaning_time)
@@ -217,7 +231,12 @@ async def room_service_cleaning_comments(message: Message, state: FSMContext) ->
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
 
 
 @router.message(FlowState.room_service_pillow_choice)
@@ -251,7 +270,12 @@ async def room_service_pillow_choice(message: Message, state: FSMContext) -> Non
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )
 
 
 @router.message(FlowState.room_service_other_text)
@@ -285,4 +309,9 @@ async def room_service_other_text(message: Message, state: FSMContext) -> None:
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
+    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_main_reply_keyboard()
+    )

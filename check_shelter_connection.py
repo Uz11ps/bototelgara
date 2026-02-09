@@ -16,42 +16,40 @@ async def test_connection():
     
     client = get_shelter_client()
     try:
-        # Пытаемся получить параметры отеля
+        # 1. Test Ping
+        print("\n1. Testing Ping...")
+        ping_result = await client.ping()
+        print(f"Ping Result: {ping_result}")
+
+        # 2. Test Hotel Params
+        print("\n2. Testing get_hotel_params...")
         params = await client.get_hotel_params()
         
         if params:
-            print("\nSUCCESS! Data received from frontdesk24.ru")
+            print("SUCCESS! Data received.")
             data = params.get('data', {})
-            
-            # В версии v2 данные обычно в data
             if isinstance(data, dict):
                 hotel_name = data.get('hotelName') or data.get('name')
                 print(f"Hotel Name: {hotel_name}")
-                
-                categories = data.get('categories', [])
-                if categories:
-                    print(f"\nFound {len(categories)} room categories:")
-                    for cat in categories[:5]:
-                        print(f"- {cat.get('name')} (ID: {cat.get('id')})")
-            else:
-                print(f"Data content: {str(data)[:200]}...")
-            
-            # Извлекаем категории номеров для доказательства
-            categories = params.get('categories', [])
-            if categories:
-                print("\nRoom Categories from your Shelter system:")
-                for cat in categories:
-                    print(f"- {cat.get('name')} (ID: {cat.get('id')})")
-            
-            # Извлекаем способы оплаты
-            payments = params.get('paymentTypes', [])
-            if payments:
-                print("\nPayment Options:")
-                for p in payments:
-                    print(f"- {p.get('name')} (ID: {p.get('id')})")
         else:
-            print("\nError: Server returned empty response.")
+            print("Error: Server returned empty response.")
             
+        # 3. Test Hotel Stats
+        print("\n3. Testing get_hotel_stats (Best Effort)...")
+        stats = await client.get_hotel_stats()
+        print(f"Total Rooms (est): {stats.total_rooms}")
+        print(f"Occupied (est): {stats.occupied_rooms}")
+        print(f"Available (est): {stats.available_rooms}")
+        print(f"Occupancy Rate: {stats.occupancy_rate:.1%}")
+
+        # 4. Test Room Availability
+        print("\n4. Testing get_room_availability...")
+        availability = await client.get_room_availability()
+        print(f"Found {len(availability)} categories.")
+        for room in availability[:5]:
+            status = "✅ Available" if room.is_available else "❌ Full"
+            print(f"- {room.room_name}: {status} (Price: {room.price}, Cap: {room.capacity})")
+
     except ShelterAPIError as e:
         print(f"\nAPI Error: {e.message}")
         if e.description:
@@ -60,6 +58,8 @@ async def test_connection():
             print(f"Error Code: {e.code}")
     except Exception as e:
         print(f"\nUnexpected Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == "__main__":
     asyncio.run(test_connection())

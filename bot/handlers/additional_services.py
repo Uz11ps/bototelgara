@@ -17,6 +17,7 @@ router = Router()
 
 @router.callback_query(FlowState.in_house_menu, F.data == "in_additional_services")
 async def start_additional_services(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     await state.set_state(FlowState.additional_services_menu)
     text = "🎯 <b>Дополнительные услуги</b>\n\nВыберите услугу для бронирования или получения информации:"
     
@@ -30,11 +31,14 @@ async def start_additional_services(callback: CallbackQuery, state: FSMContext) 
     builder.button(text="↩️ Назад", callback_data="back_to_in_house")
     builder.adjust(2)
     
-    await callback.message.edit_text(text, reply_markup=builder.as_markup())
-    await callback.answer()
+    try:
+        await callback.message.edit_text(text, reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(text, reply_markup=builder.as_markup(), parse_mode="HTML")
 
 @router.callback_query(FlowState.additional_services_menu, F.data.startswith("service_"))
 async def handle_service_selection(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     service_id = callback.data.replace("service_", "")
     
     services_info = {
@@ -74,11 +78,14 @@ async def handle_service_selection(callback: CallbackQuery, state: FSMContext) -
     builder.button(text="↩️ Назад", callback_data="in_additional_services")
     builder.adjust(1)
     
-    await callback.message.edit_text(info["text"], reply_markup=builder.as_markup())
-    await callback.answer()
+    try:
+        await callback.message.edit_text(info["text"], reply_markup=builder.as_markup(), parse_mode="HTML")
+    except Exception:
+        await callback.message.answer(info["text"], reply_markup=builder.as_markup(), parse_mode="HTML")
 
 @router.callback_query(FlowState.additional_services_booking, F.data == "book_service_yes")
 async def confirm_service_booking(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()  # Acknowledge immediately to prevent freezing
     data = await state.get_data()
     service_name = data.get("current_service", "Дополнительная услуга")
     
@@ -95,7 +102,6 @@ async def confirm_service_booking(callback: CallbackQuery, state: FSMContext) ->
     except TicketRateLimitExceededError:
         await callback.message.answer("Превышен лимит заявок. Пожалуйста, подождите.")
         await state.clear()
-        await callback.answer()
         return
 
     await callback.message.answer(
@@ -108,4 +114,3 @@ async def confirm_service_booking(callback: CallbackQuery, state: FSMContext) ->
     await state.set_state(FlowState.in_house_menu)
     from bot.keyboards.main_menu import build_in_house_menu
     await callback.message.answer("Вернуться в меню:", reply_markup=build_in_house_menu())
-    await callback.answer()

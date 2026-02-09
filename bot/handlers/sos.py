@@ -9,9 +9,14 @@ router = Router()
 
 @router.callback_query(F.data == "in_sos")
 async def start_sos(callback: CallbackQuery, state: FSMContext):
-    await callback.message.answer("🆘 <b>ЭКСТРЕННАЯ ПОМОЩЬ</b>\n\nОпишите вашу проблему максимально кратко. Администратор получит уведомление с высшим приоритетом!")
+    await callback.answer()  # Acknowledge immediately to prevent freezing
+    await callback.message.answer(
+        "🆘 <b>ЭКСТРЕННАЯ ПОМОЩЬ</b>\n\n"
+        "Опишите вашу проблему максимально кратко. "
+        "Администратор получит уведомление с высшим приоритетом!",
+        parse_mode="HTML"
+    )
     await state.set_state("sos_message")
-    await callback.answer()
 
 @router.message(F.state == "sos_message")
 async def handle_sos_message(message: Message, state: FSMContext):

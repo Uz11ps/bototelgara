@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 
 from services.content import content_manager
 
@@ -9,38 +9,52 @@ def build_segment_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     menu = content_manager.get_menu("segment_menu")
     for item in menu:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text=item["label"],
-                    callback_data=item["callback_data"],
-                )
-            ]
-        )
-    
-    # Add Mini App button
-    buttons.append([
-        InlineKeyboardButton(
-            text="📱 Визуальное меню (Mini App)",
-            web_app=WebAppInfo(url="https://gora.ru.net")
-        )
-    ])
+        if "web_app" in item:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=item["label"],
+                        web_app=WebAppInfo(url=item["web_app"]),
+                    )
+                ]
+            )
+        else:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=item["label"],
+                        callback_data=item["callback_data"],
+                    )
+                ]
+            )
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+    
+
 
 
 def _build_menu_from_key(menu_key: str) -> InlineKeyboardMarkup:
     buttons: list[list[InlineKeyboardButton]] = []
     menu = content_manager.get_menu(menu_key)
     for item in menu:
-        buttons.append(
-            [
-                InlineKeyboardButton(
-                    text=item["label"],
-                    callback_data=item["callback_data"],
-                )
-            ]
-        )
+        if "web_app" in item:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=item["label"],
+                        web_app=WebAppInfo(url=item["web_app"]),
+                    )
+                ]
+            )
+        else:
+            buttons.append(
+                [
+                    InlineKeyboardButton(
+                        text=item["label"],
+                        callback_data=item["callback_data"],
+                    )
+                ]
+            )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -124,3 +138,239 @@ def build_contact_admin_type_menu() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="❓ Заинтересованный человек", callback_data="contact_admin_interested")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_menu_categories_keyboard() -> InlineKeyboardMarkup:
+    """Build menu category selection keyboard."""
+    buttons = [
+        [InlineKeyboardButton(text="🍳 Завтрак", callback_data="menu_cat_breakfast")],
+        [InlineKeyboardButton(text="🍽 Обед", callback_data="menu_cat_lunch")],
+        [InlineKeyboardButton(text="🌙 Ужин", callback_data="menu_cat_dinner")],
+        [InlineKeyboardButton(text="🛒 Корзина", callback_data="menu_view_cart")],
+        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_in_house")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_menu_items_keyboard(items: list, category: str, cart: dict = None) -> InlineKeyboardMarkup:
+    """
+    Build keyboard for menu items with quantity buttons.
+    
+    Args:
+        items: List of MenuItem objects
+        category: Current category for back button
+        cart: Dict of {item_id: quantity} for current cart state
+    """
+    cart = cart or {}
+    buttons = []
+    
+    for item in items:
+        # Robust cart lookup (handle string/int keys)
+        qty = cart.get(item.id) or cart.get(str(item.id), 0)
+
+        # Row with item name and price
+        item_text = f"{item.name} - {item.price}₽"
+        if qty > 0:
+            item_text = f"✅ {item.name} - {item.price}₽ (x{qty})"
+        
+        buttons.append([InlineKeyboardButton(text=item_text, callback_data=f"menu_item_info_{item.id}")])
+        
+        # Row with +/- buttons
+        buttons.append([
+            InlineKeyboardButton(text="➖", callback_data=f"menu_item_minus_{item.id}"),
+            InlineKeyboardButton(text=f"{qty}", callback_data="menu_noop"),
+            InlineKeyboardButton(text="➕", callback_data=f"menu_item_plus_{item.id}"),
+        ])
+    
+    # Bottom navigation
+    buttons.append([InlineKeyboardButton(text="🛒 Корзина", callback_data="menu_view_cart")])
+    buttons.append([InlineKeyboardButton(text="↩️ К категориям", callback_data="menu_back_categories")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_cart_keyboard(cart_items: list, total: float) -> InlineKeyboardMarkup:
+    """
+    Build cart review keyboard.
+    
+    Args:
+        cart_items: List of tuples (MenuItem, quantity)
+        total: Total price
+    """
+    buttons = []
+    
+    for item, qty in cart_items:
+        buttons.append([
+            InlineKeyboardButton(text=f"{item.name} x{qty} = {item.price * qty}₽", callback_data=f"cart_item_{item.id}"),
+            InlineKeyboardButton(text="🗑", callback_data=f"cart_remove_{item.id}"),
+        ])
+    
+    if cart_items:
+        buttons.append([InlineKeyboardButton(text=f"💰 Итого: {total}₽", callback_data="cart_noop")])
+        buttons.append([InlineKeyboardButton(text="✅ Оформить заказ", callback_data="cart_checkout")])
+        buttons.append([InlineKeyboardButton(text="🗑 Очистить корзину", callback_data="cart_clear")])
+    else:
+        buttons.append([InlineKeyboardButton(text="Корзина пуста", callback_data="cart_noop")])
+    
+    buttons.append([InlineKeyboardButton(text="↩️ Назад в меню", callback_data="menu_back_categories")])
+    
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_order_confirm_keyboard() -> InlineKeyboardMarkup:
+    """Build order confirmation keyboard."""
+    buttons = [
+        [InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="order_confirm_yes")],
+        [InlineKeyboardButton(text="❌ Отменить", callback_data="order_confirm_no")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_cleaning_time_keyboard() -> InlineKeyboardMarkup:
+    """Build cleaning time selection keyboard."""
+    buttons = [
+        [InlineKeyboardButton(text="12:00 - 13:00", callback_data="cleaning_12_13")],
+        [InlineKeyboardButton(text="13:00 - 14:00", callback_data="cleaning_13_14")],
+        [InlineKeyboardButton(text="14:00 - 15:00", callback_data="cleaning_14_15")],
+        [InlineKeyboardButton(text="15:00 - 16:00", callback_data="cleaning_15_16")],
+        [InlineKeyboardButton(text="16:00 - 17:00", callback_data="cleaning_16_17")],
+        [InlineKeyboardButton(text="🚫 Уборка не требуется", callback_data="cleaning_not_needed")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_guest_booking_keyboard() -> InlineKeyboardMarkup:
+    """Build keyboard for guest booking flow start."""
+    buttons = [
+        [InlineKeyboardButton(text="✅ Указать данные проживания", callback_data="guest_booking_start")],
+        [InlineKeyboardButton(text="↩️ Позже", callback_data="back_to_in_house")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def build_main_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build persistent reply keyboard for main menu."""
+    buttons = [
+        [
+            KeyboardButton(text="🏠 Главное меню"), 
+            KeyboardButton(text="📱 Визуальное меню", web_app=WebAppInfo(url="https://gora.ru.net/menu"))
+        ],
+        [KeyboardButton(text="Я планирую поездку")],
+        [KeyboardButton(text="Я уже проживаю в отеле")],
+        [
+            KeyboardButton(text="📞 Администратор"), 
+            KeyboardButton(text="🛎 Рум-сервис")
+        ],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons, 
+        resize_keyboard=True, 
+        persistent=True,
+        input_field_placeholder="Выберите действие..."
+    )
+
+
+def build_admin_contact_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard for admin contact section."""
+    buttons = [
+        [
+            KeyboardButton(text="🏠 Поселенец"),
+            KeyboardButton(text="❓ Заинтересованный человек")
+        ],
+        [KeyboardButton(text="🏠 Главное меню")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите тип пользователя..."
+    )
+
+
+def build_room_service_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard for room service section."""
+    buttons = [
+        [KeyboardButton(text="🔧 Техническая проблема")],
+        [KeyboardButton(text="➕ Дополнительно в номер")],
+        [KeyboardButton(text="🧹 Уборка номера")],
+        [KeyboardButton(text="🛏 Меню подушек")],
+        [KeyboardButton(text="📝 Другое")],
+        [KeyboardButton(text="🏠 Главное меню")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите тип услуги..."
+    )
+
+
+def build_in_house_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard for in-house menu section."""
+    buttons = [
+        [
+            KeyboardButton(text="🛎 Рум‑сервис"),
+            KeyboardButton(text="🍳 Завтраки")
+        ],
+        [
+            KeyboardButton(text="🗺 Гид"),
+            KeyboardButton(text="🌤 Погода")
+        ],
+        [
+            KeyboardButton(text="🆘 SOS"),
+            KeyboardButton(text="👤 Личный кабинет")
+        ],
+        [KeyboardButton(text="🏠 Главное меню")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите раздел..."
+    )
+
+
+def build_pre_arrival_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard for pre-arrival menu section."""
+    buttons = [
+        [KeyboardButton(text="🏨 Забронировать номер")],
+        [KeyboardButton(text="🛏 Номера и цены")],
+        [
+            KeyboardButton(text="🌲 Об отеле"),
+            KeyboardButton(text="🎉 Мероприятия")
+        ],
+        [
+            KeyboardButton(text="📍 Как добраться"),
+            KeyboardButton(text="❓ Вопросы")
+        ],
+        [
+            KeyboardButton(text="🍽 Ресторан"),
+            KeyboardButton(text="📞 Администратор")
+        ],
+        [KeyboardButton(text="🏠 Главное меню")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите раздел..."
+    )
+
+
+def build_menu_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build reply keyboard for menu/restaurant section."""
+    buttons = [
+        [
+            KeyboardButton(text="🍳 Завтрак"),
+            KeyboardButton(text="🍽 Обед"),
+            KeyboardButton(text="🌙 Ужин")
+        ],
+        [KeyboardButton(text="🛒 Корзина")],
+        [KeyboardButton(text="🏠 Главное меню")],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите категорию..."
+    )
