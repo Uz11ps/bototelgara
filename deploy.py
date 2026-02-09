@@ -94,7 +94,7 @@ def deploy():
         f"cd {remote_path} && python3 -m venv venv",
         f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt",
         f"cd {remote_path} && npm install",
-        f"cd {remote_path} && npm run build"
+        f"cd {remote_path} && chmod +x node_modules/.bin/vite && node_modules/.bin/vite build"
     ]
     
     for cmd in setup_commands:
