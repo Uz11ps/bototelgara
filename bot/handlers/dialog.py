@@ -12,6 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.states import FlowState
+from bot.utils.reply_texts import button_text
 from db.models import TicketMessage, TicketMessageSender
 from db.session import SessionLocal
 from services.tickets import get_ticket_by_id, list_active_admins
@@ -73,7 +74,7 @@ async def handle_user_dialog_message(message: Message, state: FSMContext) -> Non
     
     # Confirm to user
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔒 Закрыть диалог", callback_data=f"close_dialog_{ticket_id}")]
+        [InlineKeyboardButton(text=button_text("dialog_close"), callback_data=f"close_dialog_{ticket_id}")]
     ])
     await message.answer("✅ Сообщение отправлено администратору. Можете продолжать писать.", reply_markup=keyboard)
 

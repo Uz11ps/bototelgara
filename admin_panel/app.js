@@ -12,6 +12,7 @@ class AdminApp {
         this.staffTasks = [];
         this.users = [];
         this.staff = [];
+        this.buttonTexts = { reply_buttons: {}, menus: {} };
         this.currentTab = 'tickets';
         this.isUserAdmin = false;
         this.editingMenuItem = null;
@@ -36,7 +37,8 @@ class AdminApp {
                 this.loadGuide(),
                 this.loadStaffTasks(),
                 this.loadUsers(),
-                this.loadStaff()
+                this.loadStaff(),
+                this.loadButtonTexts()
             ]);
         } else {
             this.currentTab = 'guest_home';
@@ -152,6 +154,75 @@ class AdminApp {
             this.staff = await r.json();
             if (this.currentTab === 'staff_management') this.render();
         } catch (e) { console.error(e); }
+    }
+
+    async loadButtonTexts() {
+        try {
+            const r = await fetch(`${API_BASE}/content/button-texts`);
+            this.buttonTexts = await r.json();
+            if (this.currentTab === 'bot_buttons') this.render();
+        } catch (e) { console.error(e); }
+    }
+
+    async saveButtonTexts() {
+        const replyButtons = { ...this.buttonTexts.reply_buttons };
+        document.querySelectorAll('[data-reply-key]').forEach((input) => {
+            const key = input.getAttribute('data-reply-key');
+            replyButtons[key] = input.value;
+        });
+
+        const menus = JSON.parse(JSON.stringify(this.buttonTexts.menus || {}));
+        document.querySelectorAll('[data-menu-path]').forEach((input) => {
+            const path = input.getAttribute('data-menu-path');
+            this.setNestedValue(menus, path, input.value);
+        });
+
+        try {
+            const response = await fetch(`${API_BASE}/content/button-texts`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    reply_buttons: replyButtons,
+                    menus
+                })
+            });
+
+            if (!response.ok) {
+                const err = await response.json().catch(() => ({}));
+                alert(err.detail || 'Ошибка сохранения текстов кнопок');
+                return;
+            }
+
+            this.buttonTexts = { reply_buttons: replyButtons, menus };
+            alert('Тексты кнопок сохранены');
+            this.render();
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сохранения текстов кнопок');
+        }
+    }
+
+    setNestedValue(target, path, value) {
+        const parts = path.split('.');
+        let current = target;
+        for (let i = 0; i < parts.length; i += 1) {
+            const part = parts[i];
+            const isLast = i === parts.length - 1;
+            const key = /^\d+$/.test(part) ? Number(part) : part;
+            if (isLast) {
+                current[key] = value;
+            } else {
+                current = current[key];
+            }
+        }
+    }
+
+    escapeAttr(value) {
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
     }
 
     async saveMenuItem(item) {
@@ -331,6 +402,41 @@ class AdminApp {
     switchTab(tab) {
         this.currentTab = tab;
         this.render();
+        if (tab === 'bot_buttons') {
+            this.loadButtonTexts();
+        }
+    }
+
+    formatDateTime(value) {
+        if (!value) return '-';
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return '-';
+        return d.toLocaleString('ru-RU', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    startStaffClock() {
+        if (this.staffClockTimer) clearInterval(this.staffClockTimer);
+        const updateClock = () => {
+            const el = document.getElementById('staffCurrentTime');
+            if (el) {
+                el.textContent = new Date().toLocaleString('ru-RU', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            }
+        };
+        updateClock();
+        this.staffClockTimer = setInterval(updateClock, 1000);
     }
 
     render() {
@@ -340,6 +446,12 @@ class AdminApp {
             this.renderStatistics();
             this.renderTicketList();
             this.renderTicketDetail();
+            if (this.currentTab === 'staff') {
+                this.startStaffClock();
+            } else if (this.staffClockTimer) {
+                clearInterval(this.staffClockTimer);
+                this.staffClockTimer = null;
+            }
         } else {
             app.innerHTML = this.renderGuestLayout();
         }
@@ -361,6 +473,7 @@ class AdminApp {
                             <button onclick="app.switchTab('guide')" class="px-4 py-2 rounded-lg ${this.currentTab === 'guide' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Гид</button>
                             <button onclick="app.switchTab('staff')" class="px-4 py-2 rounded-lg ${this.currentTab === 'staff' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Задачи</button>
                             <button onclick="app.switchTab('staff_management')" class="px-4 py-2 rounded-lg ${this.currentTab === 'staff_management' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Сотрудники</button>
+                            <button onclick="app.switchTab('bot_buttons')" class="px-4 py-2 rounded-lg ${this.currentTab === 'bot_buttons' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Кнопки бота</button>
                             <button onclick="app.switchTab('cameras')" class="px-4 py-2 rounded-lg ${this.currentTab === 'cameras' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Камеры</button>
                             <button onclick="app.switchTab('marketing')" class="px-4 py-2 rounded-lg ${this.currentTab === 'marketing' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Маркетинг</button>
                         </nav>
@@ -393,6 +506,7 @@ class AdminApp {
             case 'guide': return this.renderGuideTab();
             case 'staff': return this.renderStaffTab();
             case 'staff_management': return this.renderStaffManagementTab();
+            case 'bot_buttons': return this.renderBotButtonsTab();
             case 'cameras': return this.renderCamerasTab();
             case 'marketing': return this.renderMarketingTab();
             default: return '';
@@ -904,7 +1018,13 @@ class AdminApp {
         return `<div class="space-y-4">
             <div class="flex justify-between items-center">
                 <h2 class="text-2xl font-bold">🛠 Задачи</h2>
-                <button onclick="app.showCreateStaffTask()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold transition hover:bg-blue-700">+</button>
+                <div class="flex items-center gap-3">
+                    <div class="px-3 py-2 bg-white border rounded-lg text-xs text-gray-600">
+                        <div class="font-semibold text-gray-500">Текущее время</div>
+                        <div id="staffCurrentTime" class="text-gray-900 font-bold">--:--:--</div>
+                    </div>
+                    <button onclick="app.showCreateStaffTask()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold transition hover:bg-blue-700">+</button>
+                </div>
             </div>
             
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -918,9 +1038,12 @@ class AdminApp {
                             <button onclick="app.deleteStaffTask(${s.id})" class="text-gray-400 hover:text-red-500 transition">✕</button>
                         </div>
                         <div class="text-gray-700 text-sm mb-2 whitespace-pre-wrap">${s.description || 'Нет описания'}</div>
+                        <div class="text-xs text-gray-500 mb-2">
+                            ${s.scheduled_at ? `🕒 Выполнение: ${this.formatDateTime(s.scheduled_at)}` : '🕒 Выполнение: не задано'}
+                        </div>
                         <div class="flex justify-between items-center text-xs text-gray-500 border-t pt-2">
-                            <span>👤 ${s.assigned_to ? (this.staff.find(st => String(st.id) === String(s.assigned_to))?.full_name || s.assigned_to) : 'Не назначен'}</span>
-                            <span>${new Date(s.created_at).toLocaleDateString()}</span>
+                            <span>👤 ${s.assigned_to ? (this.staff.find(st => String(st.telegram_id) === String(s.assigned_to))?.full_name || s.assigned_to) : 'Не назначен'}</span>
+                            <span>${this.formatDateTime(s.created_at)}</span>
                         </div>
                     </div>
                 `).join('') || '<div class="col-span-full text-center py-8 text-gray-400">Нет активных задач</div>'}
@@ -978,8 +1101,9 @@ class AdminApp {
                             <label class="block text-sm font-bold mb-1">Ответственный</label>
                             <select id="taskResponsible" class="w-full border p-2.5 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white">
                                 <option value="">-- Выберите сотрудника --</option>
-                                ${this.staff.filter(s => s.is_active).map(s => `<option value="${s.id}">${s.full_name} (${s.role})</option>`).join('')}
+                                ${this.staff.filter(s => s.is_active && s.telegram_id && String(s.telegram_id).match(/^\d+$/)).map(s => `<option value="${s.telegram_id}">${s.full_name} (${s.role})</option>`).join('')}
                             </select>
+                            <div class="text-xs text-gray-500 mt-1">В списке только сотрудники с валидным Telegram ID</div>
                         </div>
 
                         <div class="flex gap-3 mt-6">
@@ -990,6 +1114,78 @@ class AdminApp {
                 </div>
             </div>
         </div>`;
+    }
+
+    collectMenuButtonRows(node, path = []) {
+        const rows = [];
+        if (Array.isArray(node)) {
+            node.forEach((item, idx) => {
+                rows.push(...this.collectMenuButtonRows(item, [...path, String(idx)]));
+            });
+            return rows;
+        }
+        if (node && typeof node === 'object') {
+            if (typeof node.label === 'string') {
+                const callback = typeof node.callback_data === 'string' ? node.callback_data : '';
+                const webApp = typeof node.web_app === 'string' ? node.web_app : '';
+                rows.push({
+                    path: [...path, 'label'].join('.'),
+                    title: path.join(' / '),
+                    label: node.label,
+                    callback,
+                    webApp
+                });
+            }
+            Object.entries(node).forEach(([key, value]) => {
+                if (key !== 'label') {
+                    rows.push(...this.collectMenuButtonRows(value, [...path, key]));
+                }
+            });
+        }
+        return rows;
+    }
+
+    renderBotButtonsTab() {
+        const replyButtons = this.buttonTexts?.reply_buttons || {};
+        const menus = this.buttonTexts?.menus || {};
+        const menuRows = this.collectMenuButtonRows(menus);
+
+        return `
+            <div class="space-y-6">
+                <div class="bg-white p-6 rounded-xl shadow">
+                    <div class="flex items-center justify-between mb-4">
+                        <h2 class="text-2xl font-bold">🤖 Кнопки бота</h2>
+                        <button onclick="app.saveButtonTexts()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700">Сохранить</button>
+                    </div>
+                    <p class="text-sm text-gray-600">Изменяется только текст кнопок, callback/логика остаются прежними.</p>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow">
+                    <h3 class="text-lg font-bold mb-4">Reply-кнопки (нижняя клавиатура)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        ${Object.entries(replyButtons).map(([key, value]) => `
+                            <label class="block">
+                                <div class="text-xs text-gray-500 mb-1">${key}</div>
+                                <input data-reply-key="${key}" class="w-full border p-2 rounded" value="${this.escapeAttr(value)}">
+                            </label>
+                        `).join('') || '<div class="text-gray-400">Нет данных</div>'}
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow">
+                    <h3 class="text-lg font-bold mb-4">Inline-кнопки из контента</h3>
+                    <div class="space-y-3 max-h-[60vh] overflow-auto pr-2">
+                        ${menuRows.map((row) => `
+                            <div class="border rounded-lg p-3 bg-gray-50">
+                                <div class="text-xs text-gray-500 mb-1">${row.title}</div>
+                                <input data-menu-path="${row.path}" class="w-full border p-2 rounded mb-2" value="${this.escapeAttr(row.label)}">
+                                <div class="text-xs text-gray-500">callback: ${row.callback || '-'} ${row.webApp ? `| web_app: ${row.webApp}` : ''}</div>
+                            </div>
+                        `).join('') || '<div class="text-gray-400">Кнопки с label в menus.ru.yml не найдены</div>'}
+                    </div>
+                </div>
+            </div>
+        `;
     }
 
     renderCamerasTab() {
@@ -1139,19 +1335,28 @@ class AdminApp {
             description: desc,
             assigned_to: resp,
             status: 'PENDING',
-            scheduled_at: scheduledTime ? new Date(scheduledTime).toISOString() : null
+            // Keep local datetime string from datetime-local input
+            scheduled_at: scheduledTime || null
         };
 
         try {
-            await fetch(`${API_BASE}/staff/tasks`, {
+            const response = await fetch(`${API_BASE}/staff/tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            if (!response.ok) {
+                let message = `Ошибка ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    if (errorData?.detail) message = errorData.detail;
+                } catch (_) {}
+                throw new Error(message);
+            }
             this.hideModal();
-            this.loadStaffTasks();
+            await this.loadStaffTasks();
         } catch (e) {
-            alert('Ошибка создания задачи: ' + e);
+            alert('Ошибка создания задачи: ' + (e?.message || e));
         }
     }
 

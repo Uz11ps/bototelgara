@@ -7,6 +7,7 @@ from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKe
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from bot.states import FlowState
+from bot.utils.reply_texts import button_text
 from services.shelter import get_shelter_client, ShelterAPIError
 from services.content import content_manager
 
@@ -117,9 +118,9 @@ async def select_variant(callback: CallbackQuery, state: FSMContext) -> None:
     
     await state.set_state("booking_upselling")
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🍳 Добавить завтрак (+650₽)", callback_data="upsell_breakfast")],
-        [InlineKeyboardButton(text="🚗 Трансфер из аэропорта", callback_data="upsell_transfer")],
-        [InlineKeyboardButton(text="⏩ Пропустить", callback_data="upsell_skip")]
+        [InlineKeyboardButton(text=button_text("booking_upsell_breakfast"), callback_data="upsell_breakfast")],
+        [InlineKeyboardButton(text=button_text("booking_upsell_transfer"), callback_data="upsell_transfer")],
+        [InlineKeyboardButton(text=button_text("booking_upsell_skip"), callback_data="upsell_skip")]
     ])
     await callback.message.answer("✨ <b>Сделайте ваш отдых комфортнее!</b>\nЖелаете добавить дополнительные услуги?", reply_markup=keyboard, parse_mode="HTML")
 

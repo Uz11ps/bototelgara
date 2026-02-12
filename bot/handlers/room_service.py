@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.states import FlowState
+from bot.utils.reply_keyboards import build_role_reply_keyboard
 from db.models import TicketType
 from services.admins import notify_admins_about_ticket
 from services.content import content_manager
@@ -112,11 +113,10 @@ async def room_service_technical_details(message: Message, state: FSMContext) ->
     except TicketRateLimitExceededError:
         warning = content_manager.get_text("tickets.rate_limited")
         await message.answer(warning)
-        from bot.keyboards.main_menu import build_main_reply_keyboard
         await state.clear()
         await message.answer(
             "Используйте кнопки ниже для навигации:",
-            reply_markup=build_main_reply_keyboard()
+            reply_markup=build_role_reply_keyboard(str(message.from_user.id))
         )
         return
 
@@ -128,11 +128,10 @@ async def room_service_technical_details(message: Message, state: FSMContext) ->
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )
 
 
@@ -182,11 +181,10 @@ async def room_service_extra_quantity(message: Message, state: FSMContext) -> No
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )
 
 
@@ -231,11 +229,10 @@ async def room_service_cleaning_comments(message: Message, state: FSMContext) ->
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )
 
 
@@ -270,11 +267,10 @@ async def room_service_pillow_choice(message: Message, state: FSMContext) -> Non
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )
 
 
@@ -309,9 +305,8 @@ async def room_service_other_text(message: Message, state: FSMContext) -> None:
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )

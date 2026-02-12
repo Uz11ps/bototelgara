@@ -66,6 +66,7 @@ async def main() -> None:
         BotCommand(command="start", description="🏠 Главное меню"),
         BotCommand(command="help", description="❓ Помощь"),
         BotCommand(command="reload_content", description="🔄 Обновить контент (Админ)"),
+        BotCommand(command="tasks", description="🛠 Мои задачи (Сотрудник)"),
     ])
 
     # Force-clear any stale Telegram sessions from previous crash loops

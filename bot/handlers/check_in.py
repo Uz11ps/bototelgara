@@ -7,6 +7,7 @@ from db.session import SessionLocal
 from services.tickets import create_ticket
 from services.admins import notify_admins_about_ticket
 from bot.states import FlowState
+from bot.utils.reply_texts import button_text
 from services.content import content_manager
 
 router = Router()
@@ -28,26 +29,18 @@ async def welcome_pre_arrival(callback: CallbackQuery, state: FSMContext):
     await callback.answer()  # Acknowledge immediately to prevent freezing
     await state.set_state(FlowState.pre_arrival_menu)
     text = content_manager.get_text("menus.pre_arrival_title")
-    from bot.keyboards.main_menu import build_pre_arrival_menu, build_pre_arrival_reply_keyboard
-    await callback.message.answer(text, reply_markup=build_pre_arrival_menu())
-    # Обновляем slash-меню
-    await callback.message.answer(
-        "Используйте кнопки ниже для навигации:",
-        reply_markup=build_pre_arrival_reply_keyboard()
-    )
+    from bot.keyboards.main_menu import build_pre_arrival_reply_keyboard
+    await callback.message.answer(text)
+    await callback.message.answer("Используйте кнопки ниже для навигации:", reply_markup=build_pre_arrival_reply_keyboard())
 
 
-@router.message(F.text == "Я планирую поездку")
+@router.message(F.text.func(lambda value: value == button_text("main_pre_arrival")))
 async def welcome_pre_arrival_text(message: Message, state: FSMContext):
     await state.set_state(FlowState.pre_arrival_menu)
     text = content_manager.get_text("menus.pre_arrival_title")
-    from bot.keyboards.main_menu import build_pre_arrival_menu, build_pre_arrival_reply_keyboard
-    await message.answer(text, reply_markup=build_pre_arrival_menu())
-    # Обновляем slash-меню
-    await message.answer(
-        "Используйте кнопки ниже для навигации:",
-        reply_markup=build_pre_arrival_reply_keyboard()
-    )
+    from bot.keyboards.main_menu import build_pre_arrival_reply_keyboard
+    await message.answer(text)
+    await message.answer("Используйте кнопки ниже для навигации:", reply_markup=build_pre_arrival_reply_keyboard())
 
 
 @router.callback_query(F.data == "segment_in_house")
@@ -56,7 +49,7 @@ async def welcome_in_house(callback: CallbackQuery, state: FSMContext):
     await _handle_in_house_logic(callback.message, state, str(callback.from_user.id))
 
 
-@router.message(F.text == "Я уже проживаю в отеле")
+@router.message(F.text.func(lambda value: value == button_text("main_in_house")))
 async def welcome_in_house_text(message: Message, state: FSMContext):
     await _handle_in_house_logic(message, state, str(message.from_user.id))
 
@@ -73,7 +66,7 @@ async def _handle_in_house_logic(message: Message, state: FSMContext, telegram_i
         "☕ Завтраки проходят с 08:00 до 10:00 в ресторане на 1 этаже."
     )
     
-    from bot.keyboards.main_menu import build_in_house_menu, build_guest_booking_keyboard, build_in_house_reply_keyboard
+    from bot.keyboards.main_menu import build_guest_booking_keyboard, build_in_house_reply_keyboard
     await state.set_state(FlowState.in_house_menu)
     await message.answer(text, parse_mode="HTML", reply_markup=build_in_house_reply_keyboard())
     
@@ -87,10 +80,7 @@ async def _handle_in_house_logic(message: Message, state: FSMContext, telegram_i
             parse_mode="HTML"
         )
     else:
-        await message.answer(
-            content_manager.get_text("menus.in_house_title"),
-            reply_markup=build_in_house_menu()
-        )
+        await message.answer(content_manager.get_text("menus.in_house_title"))
 
 @router.callback_query(F.data == "in_check_in")
 async def start_check_in(callback: CallbackQuery, state: FSMContext):
@@ -209,10 +199,6 @@ async def handle_guest_check_out(message: Message, state: FSMContext):
     
     await message.answer(text, parse_mode="HTML")
     
-    # Show main in-house menu
-    from bot.keyboards.main_menu import build_in_house_menu
+    # Show main in-house menu title (navigation via reply keyboard)
     await state.set_state(FlowState.in_house_menu)
-    await message.answer(
-        content_manager.get_text("menus.in_house_title"),
-        reply_markup=build_in_house_menu()
-    )
+    await message.answer(content_manager.get_text("menus.in_house_title"))

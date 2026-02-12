@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from db.session import SessionLocal
 from db.models import GuideItem
+from bot.utils.reply_texts import button_text
 
 router = Router()
 
@@ -9,10 +10,10 @@ router = Router()
 async def show_guide_categories(callback: CallbackQuery):
     await callback.answer()  # Acknowledge immediately to prevent freezing
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🌲 Природа и Парки", callback_data="guide_cat_nature")],
-        [InlineKeyboardButton(text="☕ Кафе и Рестораны", callback_data="guide_cat_cafes")],
-        [InlineKeyboardButton(text="🚤 Активности и Прокат", callback_data="guide_cat_rent")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_in_house")]
+        [InlineKeyboardButton(text=button_text("guide_nature"), callback_data="guide_cat_nature")],
+        [InlineKeyboardButton(text=button_text("guide_cafes"), callback_data="guide_cat_cafes")],
+        [InlineKeyboardButton(text=button_text("guide_rent"), callback_data="guide_cat_rent")],
+        [InlineKeyboardButton(text=button_text("guide_back"), callback_data="back_to_in_house")]
     ])
     try:
         await callback.message.edit_text("🗺 Гид по Сортавала и Карелии\nВыберите категорию:", reply_markup=keyboard)
@@ -37,7 +38,7 @@ async def show_guide_items(callback: CallbackQuery):
             if item.map_url:
                 buttons.append([InlineKeyboardButton(text=f"🗺 {item.name} на карте", url=item.map_url)])
         
-        buttons.append([InlineKeyboardButton(text="↩️ К категориям", callback_data="in_guide")])
+        buttons.append([InlineKeyboardButton(text=button_text("guide_to_categories"), callback_data="in_guide")])
     
     await callback.answer()  # Acknowledge callback
     try:

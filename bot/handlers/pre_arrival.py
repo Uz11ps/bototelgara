@@ -5,7 +5,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from bot.states import FlowState
-from bot.keyboards.main_menu import build_pre_arrival_menu, build_contact_admin_type_menu
+from bot.keyboards.main_menu import build_contact_admin_type_menu
+from bot.utils.reply_keyboards import build_role_reply_keyboard
 from services.content import content_manager
 
 
@@ -25,11 +26,7 @@ async def handle_pre_arrival_menu(callback: CallbackQuery, state: FSMContext) ->
     if key == "pre_contact_admin":
         await state.set_state(FlowState.contact_admin_type)
         from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
-        await callback.message.answer(
-            "Выберите, кто вы:",
-            reply_markup=build_contact_admin_type_menu()
-        )
-        # Обновляем slash-меню
+        await callback.message.answer("Выберите, кто вы:")
         await callback.message.answer(
             "Используйте кнопки ниже для выбора:",
             reply_markup=build_admin_contact_reply_keyboard()
@@ -52,10 +49,7 @@ async def handle_pre_arrival_menu(callback: CallbackQuery, state: FSMContext) ->
 
     text = content_manager.get_text(text_key)
     await callback.message.answer(text)
-    await callback.message.answer(
-        content_manager.get_text("menus.pre_arrival_title"),
-        reply_markup=build_pre_arrival_menu(),
-    )
+    await callback.message.answer(content_manager.get_text("menus.pre_arrival_title"))
 
 
 @router.callback_query(FlowState.contact_admin_type)
@@ -115,12 +109,11 @@ async def handle_contact_admin_message_pre_arrival(message: Message, state: FSMC
         )
     except TicketRateLimitExceededError:
         warning = "Вы отправили слишком много заявок. Пожалуйста, подождите."
-        from bot.keyboards.main_menu import build_main_reply_keyboard
         await message.answer(warning)
         await state.clear()
         await message.answer(
             "Используйте кнопки ниже для навигации:",
-            reply_markup=build_main_reply_keyboard()
+            reply_markup=build_role_reply_keyboard(str(message.from_user.id))
         )
         return
     
@@ -130,9 +123,8 @@ async def handle_contact_admin_message_pre_arrival(message: Message, state: FSMC
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
     
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )

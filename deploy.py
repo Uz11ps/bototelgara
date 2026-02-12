@@ -15,7 +15,7 @@ def create_tarball(output_filename, source_dir):
     with tarfile.open(output_filename, "w:gz") as tar:
         for root, dirs, files in os.walk(source_dir):
             # Исключаем служебные папки
-            if any(x in root for x in [".git", "__pycache__", "venv", ".venv", ".cursor", "terminals", "assets"]):
+            if any(x in root for x in [".git", "__pycache__", "venv", ".venv", ".cursor", "terminals"]):
                 continue
             for file in files:
                 # Исключаем архивы и сами скрипты деплоя
@@ -102,7 +102,7 @@ def deploy():
         f"cd {remote_path} && python3 -m venv venv",
         f"cd {remote_path} && ./venv/bin/pip install -r requirements.txt",
         f"cd {remote_path} && npm install",
-        f"cd {remote_path} && rm -rf mini_app/*",
+        f"cd {remote_path} && chmod +x node_modules/@esbuild/linux-x64/bin/esbuild || true",
         f"cd {remote_path} && chmod +x node_modules/.bin/vite && node_modules/.bin/vite build"
     ]
     

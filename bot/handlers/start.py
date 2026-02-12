@@ -3,9 +3,11 @@ from __future__ import annotations
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 
 from bot.states import FlowState
+from bot.utils.reply_keyboards import build_role_reply_keyboard
+from bot.utils.reply_texts import button_text
 from services.content import content_manager
 
 
@@ -28,25 +30,47 @@ def get_current_season() -> str:
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     from db.session import SessionLocal
+    from db.models import Staff, StaffRole
     from services.tickets import is_user_admin
-    from bot.keyboards.main_menu import build_admin_panel_menu, build_main_reply_keyboard
+    from bot.keyboards.main_menu import build_admin_panel_menu, build_staff_reply_keyboard
     
     user_id = str(message.from_user.id)
     
-    # 1. Always send the main menu (Persistent Reply Keyboard) to ensure it's installed
+    # 1. Resolve user role and choose correct persistent keyboard
+    with SessionLocal() as session:
+        is_admin = is_user_admin(session, user_id)
+        staff = (
+            session.query(Staff)
+            .filter(Staff.telegram_id == user_id, Staff.is_active == True)
+            .first()
+        )
+        is_staff_worker = bool(staff and staff.role in {StaffRole.MAID, StaffRole.TECHNICIAN})
+
+    if is_staff_worker:
+        staff_text = (
+            "🛠 <b>Панель сотрудника</b>\n\n"
+            "Используйте кнопки ниже, чтобы открыть и закрыть ваши задачи."
+        )
+        await message.answer("Обновляю клавиатуру...", reply_markup=ReplyKeyboardRemove())
+        await message.answer(staff_text, parse_mode="HTML", reply_markup=build_staff_reply_keyboard())
+        await message.answer(f"Нажмите «{button_text('staff_tasks')}», чтобы увидеть активные задачи.")
+        return
+
+    # 2. Default user menu for guests/admins
     greeting = content_manager.get_text("greeting.start")
     season = get_current_season()
     seasonal_text = content_manager.get_text(f"seasons.{season}")
     choice_prompt = content_manager.get_text("menus.segment_choice_prompt")
 
+    await message.answer("Обновляю клавиатуру...", reply_markup=ReplyKeyboardRemove())
     await message.answer(
         f"{greeting}\n\n{seasonal_text}\n\n{choice_prompt}", 
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(user_id)
     )
     
-    # 2. Check if user is admin and show admin panel as a separate message
+    # 3. Check if user is admin and show admin panel as a separate message
     with SessionLocal() as session:
-        if is_user_admin(session, user_id):
+        if is_admin:
             from services.tickets import get_pending_tickets, get_all_active_tickets
             pending_count = len(get_pending_tickets(session))
             all_count = len(get_all_active_tickets(session))
@@ -72,18 +96,17 @@ async def back_to_segment_handler(callback: CallbackQuery, state: FSMContext) ->
     await callback.message.answer(choice_prompt)
 
 
-@router.message(F.text == "🏠 Главное меню")
+@router.message(F.text.func(lambda value: value == button_text("main_home")))
 async def reply_main_menu(message: Message, state: FSMContext) -> None:
     await state.clear()
     await cmd_start(message)
 
 
-@router.message(F.text.in_({"🏠 Поселенец", "❓ Заинтересованный человек"}))
+@router.message(F.text.func(lambda value: value in {button_text("contact_guest"), button_text("contact_interested")}))
 async def reply_admin_type_selection(message: Message, state: FSMContext) -> None:
     """Handle admin type selection from reply keyboard."""
-    from bot.keyboards.main_menu import build_contact_admin_type_menu
-    
-    user_type = "guest" if message.text == "🏠 Поселенец" else "interested"
+
+    user_type = "guest" if message.text == button_text("contact_guest") else "interested"
     await state.set_state(FlowState.contact_admin_type)
     await state.update_data(contact_admin_type=user_type)
     
@@ -92,17 +115,22 @@ async def reply_admin_type_selection(message: Message, state: FSMContext) -> Non
     await message.answer(f"Вы выбрали: {user_type_label}\n\nНапишите ваш вопрос или запрос:")
 
 
-@router.message(F.text.in_({"🔧 Техническая проблема", "➕ Дополнительно в номер", "🧹 Уборка номера", "🛏 Меню подушек", "📝 Другое"}))
+@router.message(F.text.func(lambda value: value in {
+    button_text("room_technical"),
+    button_text("room_extra"),
+    button_text("room_cleaning"),
+    button_text("room_pillow"),
+    button_text("room_other"),
+}))
 async def reply_room_service_selection(message: Message, state: FSMContext) -> None:
     """Handle room service selection from reply keyboard."""
-    from bot.keyboards.main_menu import build_room_service_menu
-    
+
     mapping = {
-        "🔧 Техническая проблема": "rs_technical_problem",
-        "➕ Дополнительно в номер": "rs_extra_to_room",
-        "🧹 Уборка номера": "rs_cleaning",
-        "🛏 Меню подушек": "rs_pillow_menu",
-        "📝 Другое": "rs_other",
+        button_text("room_technical"): "rs_technical_problem",
+        button_text("room_extra"): "rs_extra_to_room",
+        button_text("room_cleaning"): "rs_cleaning",
+        button_text("room_pillow"): "rs_pillow_menu",
+        button_text("room_other"): "rs_other",
     }
     
     callback_data = mapping.get(message.text)
@@ -112,59 +140,66 @@ async def reply_room_service_selection(message: Message, state: FSMContext) -> N
         await message.answer("Укажите номер вашей комнаты:")
 
 
-@router.message(F.text.in_({"🛎 Рум‑сервис", "🍳 Завтраки", "🗺 Гид", "🌤 Погода", "🆘 SOS", "👤 Личный кабинет"}))
+@router.message(F.text.func(lambda value: value in {
+    button_text("in_room_service"),
+    button_text("in_breakfasts"),
+    button_text("in_guide"),
+    button_text("in_weather"),
+    button_text("in_sos"),
+    button_text("in_profile"),
+}))
 async def reply_in_house_menu_selection(message: Message, state: FSMContext) -> None:
     """Handle in-house menu selection from reply keyboard."""
-    from aiogram import Bot
-    from bot.keyboards.main_menu import build_in_house_menu
-    
+
     # Имитируем callback для существующих обработчиков
-    if message.text == "🛎 Рум‑сервис":
+    if message.text == button_text("in_room_service"):
         await state.set_state(FlowState.room_service_choosing_branch)
         text = content_manager.get_text("room_service.what_do_you_need")
-        from bot.keyboards.main_menu import build_room_service_menu, build_room_service_reply_keyboard
-        await message.answer(text, reply_markup=build_room_service_menu())
-        await message.answer(
-            "Используйте кнопки ниже для выбора:",
-            reply_markup=build_room_service_reply_keyboard()
-        )
-    elif message.text == "🍳 Завтраки":
+        from bot.keyboards.main_menu import build_room_service_reply_keyboard
+        await message.answer(text)
+        await message.answer("Используйте кнопки ниже для выбора:", reply_markup=build_room_service_reply_keyboard())
+    elif message.text == button_text("in_breakfasts"):
         # Переход к завтракам обрабатывается через callback
         await message.answer("Выберите завтрак из меню выше или используйте кнопки ниже.")
-    elif message.text == "🗺 Гид":
+    elif message.text == button_text("in_guide"):
         # Переход к гиду обрабатывается через callback
         await message.answer("Выберите категорию гида из меню выше.")
-    elif message.text == "🌤 Погода":
+    elif message.text == button_text("in_weather"):
         # Переход к погоде обрабатывается через callback
         await message.answer("Информация о погоде доступна в меню выше.")
-    elif message.text == "🆘 SOS":
+    elif message.text == button_text("in_sos"):
         # Переход к SOS обрабатывается через callback
         await message.answer("Используйте меню выше для обращения за помощью.")
-    elif message.text == "👤 Личный кабинет":
+    elif message.text == button_text("in_profile"):
         # Переход к личному кабинету обрабатывается через callback
         await message.answer("Информация о личном кабинете доступна в меню выше.")
 
 
-@router.message(F.text.in_({"🍳 Завтрак", "🍽 Обед", "🌙 Ужин", "🛒 Корзина"}))
+@router.message(F.text.func(lambda value: value in {
+    button_text("menu_breakfast"),
+    button_text("menu_lunch"),
+    button_text("menu_dinner"),
+    button_text("menu_cart"),
+}))
 async def reply_menu_selection(message: Message, state: FSMContext) -> None:
     """Handle menu category selection from reply keyboard."""
     from bot.keyboards.main_menu import build_menu_categories_keyboard
     
     mapping = {
-        "🍳 Завтрак": "menu_cat_breakfast",
-        "🍽 Обед": "menu_cat_lunch",
-        "🌙 Ужин": "menu_cat_dinner",
+        button_text("menu_breakfast"): "menu_cat_breakfast",
+        button_text("menu_lunch"): "menu_cat_lunch",
+        button_text("menu_dinner"): "menu_cat_dinner",
     }
     
     callback_data = mapping.get(message.text)
     if callback_data:
         # Имитируем callback для обработчика категорий меню
         await message.answer(f"Выбрана категория: {message.text}. Используйте меню выше для выбора блюд.")
-    elif message.text == "🛒 Корзина":
+    elif message.text == button_text("menu_cart"):
         await message.answer("Просмотр корзины доступен в меню выше.")
 
 
-@router.message(F.text == "🏨 Забронировать номер")
+@router.message(F.text.func(lambda value: value == button_text("pre_book_room")))
 async def reply_book_room(message: Message, state: FSMContext) -> None:
     """Handle booking room from reply keyboard."""
     from datetime import date
@@ -180,62 +215,51 @@ async def reply_book_room(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.message(F.text.in_({"🛏 Номера и цены", "🌲 Об отеле", "🎉 Мероприятия", "📍 Как добраться", "❓ Вопросы", "🍽 Ресторан"}))
+@router.message(F.text.func(lambda value: value in {
+    button_text("pre_rooms_prices"),
+    button_text("pre_about_hotel"),
+    button_text("pre_events"),
+    button_text("pre_route"),
+    button_text("pre_faq"),
+    button_text("pre_restaurant"),
+}))
 async def reply_pre_arrival_selection(message: Message, state: FSMContext) -> None:
     """Handle pre-arrival menu selection from reply keyboard."""
     from services.content import content_manager
     
     mapping = {
-        "🛏 Номера и цены": "pre_arrival.rooms_prices",
-        "🌲 Об отеле": "pre_arrival.about_hotel",
-        "🎉 Мероприятия": "pre_arrival.events_banquets",
-        "📍 Как добраться": "pre_arrival.how_to_get",
-        "❓ Вопросы": "pre_arrival.faq",
-        "🍽 Ресторан": "pre_arrival.restaurant",
+        button_text("pre_rooms_prices"): "pre_arrival.rooms_prices",
+        button_text("pre_about_hotel"): "pre_arrival.about_hotel",
+        button_text("pre_events"): "pre_arrival.events_banquets",
+        button_text("pre_route"): "pre_arrival.how_to_get",
+        button_text("pre_faq"): "pre_arrival.faq",
+        button_text("pre_restaurant"): "pre_arrival.restaurant",
     }
     
     text_key = mapping.get(message.text)
     if text_key:
         text = content_manager.get_text(text_key)
         await message.answer(text)
-        # Показываем меню снова
-        from bot.keyboards.main_menu import build_pre_arrival_menu, build_pre_arrival_reply_keyboard
-        await message.answer(
-            content_manager.get_text("menus.pre_arrival_title"),
-            reply_markup=build_pre_arrival_menu()
-        )
-        await message.answer(
-            "Используйте кнопки ниже для навигации:",
-            reply_markup=build_pre_arrival_reply_keyboard()
-        )
+        from bot.keyboards.main_menu import build_pre_arrival_reply_keyboard
+        await message.answer(content_manager.get_text("menus.pre_arrival_title"))
+        await message.answer("Используйте кнопки ниже для навигации:", reply_markup=build_pre_arrival_reply_keyboard())
 
 
-@router.message(F.text == "📞 Администратор")
+@router.message(F.text.func(lambda value: value == button_text("main_admin")))
 async def reply_admin_contact(message: Message, state: FSMContext) -> None:
-    from bot.keyboards.main_menu import build_contact_admin_type_menu, build_admin_contact_reply_keyboard
+    from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
     await state.set_state(FlowState.contact_admin_type)
-    await message.answer(
-        "Выберите, кто вы:",
-        reply_markup=build_contact_admin_type_menu()
-    )
-    # Обновляем slash-меню
-    await message.answer(
-        "Используйте кнопки ниже для выбора:",
-        reply_markup=build_admin_contact_reply_keyboard()
-    )
+    await message.answer("Выберите, кто вы:")
+    await message.answer("Используйте кнопки ниже для выбора:", reply_markup=build_admin_contact_reply_keyboard())
 
 
-@router.message(F.text == "🛎 Рум-сервис")
+@router.message(F.text.func(lambda value: value == button_text("main_room_service")))
 async def reply_room_service(message: Message, state: FSMContext) -> None:
-    from bot.keyboards.main_menu import build_room_service_menu, build_room_service_reply_keyboard
+    from bot.keyboards.main_menu import build_room_service_reply_keyboard
     await state.set_state(FlowState.room_service_choosing_branch)
     text = content_manager.get_text("room_service.what_do_you_need")
-    await message.answer(text, reply_markup=build_room_service_menu())
-    # Обновляем slash-меню
-    await message.answer(
-        "Используйте кнопки ниже для выбора:",
-        reply_markup=build_room_service_reply_keyboard()
-    )
+    await message.answer(text)
+    await message.answer("Используйте кнопки ниже для выбора:", reply_markup=build_room_service_reply_keyboard())
 
 
 # NOTE: segment_pre_arrival and segment_in_house callbacks are handled in check_in.py
@@ -270,12 +294,19 @@ async def cmd_help(message: Message) -> None:
     """Show available commands"""
     from db.session import SessionLocal
     from services.tickets import is_user_admin
+    from db.models import Staff, StaffRole
     
     user_id = str(message.from_user.id)
     
-    # Check if user is admin
+    # Check if user is admin/staff
     with SessionLocal() as session:
         is_admin = is_user_admin(session, user_id)
+        staff = (
+            session.query(Staff)
+            .filter(Staff.telegram_id == user_id, Staff.is_active == True)
+            .first()
+        )
+        is_staff_worker = bool(staff and staff.role in {StaffRole.MAID, StaffRole.TECHNICIAN})
     
     if is_admin:
         help_text = (
@@ -290,6 +321,13 @@ async def cmd_help(message: Message) -> None:
             "/sheltertest - Проверка подключения к Shelter API\n"
             "/reload_content - Перезагрузить контент\n"
             "/help - Показать эту справку\n"
+        )
+    elif is_staff_worker:
+        help_text = (
+            "🛠 <b>Команды сотрудника:</b>\n\n"
+            "/tasks - Мои активные задачи\n"
+            "/staff - Мои активные задачи\n"
+            "/start - Показать панель сотрудника\n"
         )
     else:
         help_text = (

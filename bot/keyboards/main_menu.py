@@ -3,6 +3,7 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
 
 from services.content import content_manager
+from bot.utils.reply_texts import button_text
 
 
 def build_segment_keyboard() -> InlineKeyboardMarkup:
@@ -85,11 +86,11 @@ def build_breakfast_confirm_menu() -> InlineKeyboardMarkup:
 def build_admin_panel_menu() -> InlineKeyboardMarkup:
     """Build admin panel main menu."""
     buttons = [
-        [InlineKeyboardButton(text="📋 Все активные заявки", callback_data="admin_all_tickets")],
-        [InlineKeyboardButton(text="⏳ Ожидающие решения", callback_data="admin_pending_tickets")],
-        [InlineKeyboardButton(text="✅ Завершенные за сегодня", callback_data="admin_completed_today")],
-        [InlineKeyboardButton(text="🏨 Статус отеля", callback_data="admin_hotel_status")],
-        [InlineKeyboardButton(text="🔄 Обновить", callback_data="admin_refresh")],
+        [InlineKeyboardButton(text=button_text("admin_all_tickets"), callback_data="admin_all_tickets")],
+        [InlineKeyboardButton(text=button_text("admin_pending_tickets"), callback_data="admin_pending_tickets")],
+        [InlineKeyboardButton(text=button_text("admin_completed_today"), callback_data="admin_completed_today")],
+        [InlineKeyboardButton(text=button_text("admin_hotel_status"), callback_data="admin_hotel_status")],
+        [InlineKeyboardButton(text=button_text("admin_refresh"), callback_data="admin_refresh")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -116,17 +117,17 @@ def build_ticket_list_keyboard(tickets: list, back_callback: str = "admin_refres
         kb_logger.info(f"Adding button for ticket #{ticket.id}: {label}")
         buttons.append([InlineKeyboardButton(text=label, callback_data=f"admin_view_ticket_{ticket.id}")])
     
-    buttons.append([InlineKeyboardButton(text="↩️ Назад в меню", callback_data=back_callback)])
+    buttons.append([InlineKeyboardButton(text=button_text("admin_back_menu"), callback_data=back_callback)])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def build_ticket_action_menu(ticket_id: int) -> InlineKeyboardMarkup:
     """Build action menu for a specific ticket."""
     buttons = [
-        [InlineKeyboardButton(text="💬 Ответить", callback_data=f"admin_reply_{ticket_id}")],
-        [InlineKeyboardButton(text="✅ Отметить выполненной", callback_data=f"admin_complete_{ticket_id}")],
-        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"admin_decline_{ticket_id}")],
-        [InlineKeyboardButton(text="↩️ Назад к списку", callback_data="admin_all_tickets")],
+        [InlineKeyboardButton(text=button_text("admin_reply"), callback_data=f"admin_reply_{ticket_id}")],
+        [InlineKeyboardButton(text=button_text("admin_complete"), callback_data=f"admin_complete_{ticket_id}")],
+        [InlineKeyboardButton(text=button_text("admin_decline"), callback_data=f"admin_decline_{ticket_id}")],
+        [InlineKeyboardButton(text=button_text("admin_back_list"), callback_data="admin_all_tickets")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -134,8 +135,8 @@ def build_ticket_action_menu(ticket_id: int) -> InlineKeyboardMarkup:
 def build_contact_admin_type_menu() -> InlineKeyboardMarkup:
     """Build menu for selecting user type when contacting admin."""
     buttons = [
-        [InlineKeyboardButton(text="🏠 Поселенец", callback_data="contact_admin_guest")],
-        [InlineKeyboardButton(text="❓ Заинтересованный человек", callback_data="contact_admin_interested")],
+        [InlineKeyboardButton(text=button_text("inline_contact_guest"), callback_data="contact_admin_guest")],
+        [InlineKeyboardButton(text=button_text("inline_contact_interested"), callback_data="contact_admin_interested")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -143,11 +144,11 @@ def build_contact_admin_type_menu() -> InlineKeyboardMarkup:
 def build_menu_categories_keyboard() -> InlineKeyboardMarkup:
     """Build menu category selection keyboard."""
     buttons = [
-        [InlineKeyboardButton(text="🍳 Завтрак", callback_data="menu_cat_breakfast")],
-        [InlineKeyboardButton(text="🍽 Обед", callback_data="menu_cat_lunch")],
-        [InlineKeyboardButton(text="🌙 Ужин", callback_data="menu_cat_dinner")],
-        [InlineKeyboardButton(text="🛒 Корзина", callback_data="menu_view_cart")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_in_house")],
+        [InlineKeyboardButton(text=button_text("inline_menu_breakfast"), callback_data="menu_cat_breakfast")],
+        [InlineKeyboardButton(text=button_text("inline_menu_lunch"), callback_data="menu_cat_lunch")],
+        [InlineKeyboardButton(text=button_text("inline_menu_dinner"), callback_data="menu_cat_dinner")],
+        [InlineKeyboardButton(text=button_text("inline_menu_cart"), callback_data="menu_view_cart")],
+        [InlineKeyboardButton(text=button_text("inline_back"), callback_data="back_to_in_house")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -177,14 +178,14 @@ def build_menu_items_keyboard(items: list, category: str, cart: dict = None) -> 
         
         # Row with +/- buttons
         buttons.append([
-            InlineKeyboardButton(text="➖", callback_data=f"menu_item_minus_{item.id}"),
+            InlineKeyboardButton(text=button_text("inline_minus"), callback_data=f"menu_item_minus_{item.id}"),
             InlineKeyboardButton(text=f"{qty}", callback_data="menu_noop"),
-            InlineKeyboardButton(text="➕", callback_data=f"menu_item_plus_{item.id}"),
+            InlineKeyboardButton(text=button_text("inline_plus"), callback_data=f"menu_item_plus_{item.id}"),
         ])
     
     # Bottom navigation
-    buttons.append([InlineKeyboardButton(text="🛒 Корзина", callback_data="menu_view_cart")])
-    buttons.append([InlineKeyboardButton(text="↩️ К категориям", callback_data="menu_back_categories")])
+    buttons.append([InlineKeyboardButton(text=button_text("inline_menu_cart"), callback_data="menu_view_cart")])
+    buttons.append([InlineKeyboardButton(text=button_text("inline_to_categories"), callback_data="menu_back_categories")])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -207,12 +208,12 @@ def build_cart_keyboard(cart_items: list, total: float) -> InlineKeyboardMarkup:
     
     if cart_items:
         buttons.append([InlineKeyboardButton(text=f"💰 Итого: {total}₽", callback_data="cart_noop")])
-        buttons.append([InlineKeyboardButton(text="✅ Оформить заказ", callback_data="cart_checkout")])
-        buttons.append([InlineKeyboardButton(text="🗑 Очистить корзину", callback_data="cart_clear")])
+        buttons.append([InlineKeyboardButton(text=button_text("inline_checkout"), callback_data="cart_checkout")])
+        buttons.append([InlineKeyboardButton(text=button_text("inline_clear_cart"), callback_data="cart_clear")])
     else:
-        buttons.append([InlineKeyboardButton(text="Корзина пуста", callback_data="cart_noop")])
+        buttons.append([InlineKeyboardButton(text=button_text("inline_empty_cart"), callback_data="cart_noop")])
     
-    buttons.append([InlineKeyboardButton(text="↩️ Назад в меню", callback_data="menu_back_categories")])
+    buttons.append([InlineKeyboardButton(text=button_text("admin_back_menu"), callback_data="menu_back_categories")])
     
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -220,8 +221,8 @@ def build_cart_keyboard(cart_items: list, total: float) -> InlineKeyboardMarkup:
 def build_order_confirm_keyboard() -> InlineKeyboardMarkup:
     """Build order confirmation keyboard."""
     buttons = [
-        [InlineKeyboardButton(text="✅ Подтвердить заказ", callback_data="order_confirm_yes")],
-        [InlineKeyboardButton(text="❌ Отменить", callback_data="order_confirm_no")],
+        [InlineKeyboardButton(text=button_text("inline_confirm_order"), callback_data="order_confirm_yes")],
+        [InlineKeyboardButton(text=button_text("inline_cancel"), callback_data="order_confirm_no")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -234,7 +235,7 @@ def build_cleaning_time_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="14:00 - 15:00", callback_data="cleaning_14_15")],
         [InlineKeyboardButton(text="15:00 - 16:00", callback_data="cleaning_15_16")],
         [InlineKeyboardButton(text="16:00 - 17:00", callback_data="cleaning_16_17")],
-        [InlineKeyboardButton(text="🚫 Уборка не требуется", callback_data="cleaning_not_needed")],
+        [InlineKeyboardButton(text=button_text("inline_cleaning_not_needed"), callback_data="cleaning_not_needed")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -242,8 +243,8 @@ def build_cleaning_time_keyboard() -> InlineKeyboardMarkup:
 def build_guest_booking_keyboard() -> InlineKeyboardMarkup:
     """Build keyboard for guest booking flow start."""
     buttons = [
-        [InlineKeyboardButton(text="✅ Указать данные проживания", callback_data="guest_booking_start")],
-        [InlineKeyboardButton(text="↩️ Позже", callback_data="back_to_in_house")],
+        [InlineKeyboardButton(text=button_text("inline_guest_booking_start"), callback_data="guest_booking_start")],
+        [InlineKeyboardButton(text=button_text("inline_guest_booking_later"), callback_data="back_to_in_house")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -251,15 +252,12 @@ def build_guest_booking_keyboard() -> InlineKeyboardMarkup:
 def build_main_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build persistent reply keyboard for main menu."""
     buttons = [
+        [KeyboardButton(text=button_text("main_home"))],
+        [KeyboardButton(text=button_text("main_pre_arrival"))],
+        [KeyboardButton(text=button_text("main_in_house"))],
         [
-            KeyboardButton(text="🏠 Главное меню"), 
-            KeyboardButton(text="📱 Визуальное меню", web_app=WebAppInfo(url="https://gora.ru.net/menu"))
-        ],
-        [KeyboardButton(text="Я планирую поездку")],
-        [KeyboardButton(text="Я уже проживаю в отеле")],
-        [
-            KeyboardButton(text="📞 Администратор"), 
-            KeyboardButton(text="🛎 Рум-сервис")
+            KeyboardButton(text=button_text("main_admin")),
+            KeyboardButton(text=button_text("main_room_service"))
         ],
     ]
     return ReplyKeyboardMarkup(
@@ -270,14 +268,31 @@ def build_main_reply_keyboard() -> ReplyKeyboardMarkup:
     )
 
 
+def build_staff_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Build persistent reply keyboard for staff members."""
+    buttons = [
+        [
+            KeyboardButton(text=button_text("staff_tasks")),
+            KeyboardButton(text=button_text("staff_refresh")),
+        ],
+        [KeyboardButton(text=button_text("main_home"))],
+    ]
+    return ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        persistent=True,
+        input_field_placeholder="Выберите действие...",
+    )
+
+
 def build_admin_contact_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build reply keyboard for admin contact section."""
     buttons = [
         [
-            KeyboardButton(text="🏠 Поселенец"),
-            KeyboardButton(text="❓ Заинтересованный человек")
+            KeyboardButton(text=button_text("contact_guest")),
+            KeyboardButton(text=button_text("contact_interested"))
         ],
-        [KeyboardButton(text="🏠 Главное меню")],
+        [KeyboardButton(text=button_text("main_home"))],
     ]
     return ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -290,12 +305,12 @@ def build_admin_contact_reply_keyboard() -> ReplyKeyboardMarkup:
 def build_room_service_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build reply keyboard for room service section."""
     buttons = [
-        [KeyboardButton(text="🔧 Техническая проблема")],
-        [KeyboardButton(text="➕ Дополнительно в номер")],
-        [KeyboardButton(text="🧹 Уборка номера")],
-        [KeyboardButton(text="🛏 Меню подушек")],
-        [KeyboardButton(text="📝 Другое")],
-        [KeyboardButton(text="🏠 Главное меню")],
+        [KeyboardButton(text=button_text("room_technical"))],
+        [KeyboardButton(text=button_text("room_extra"))],
+        [KeyboardButton(text=button_text("room_cleaning"))],
+        [KeyboardButton(text=button_text("room_pillow"))],
+        [KeyboardButton(text=button_text("room_other"))],
+        [KeyboardButton(text=button_text("main_home"))],
     ]
     return ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -309,18 +324,18 @@ def build_in_house_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build reply keyboard for in-house menu section."""
     buttons = [
         [
-            KeyboardButton(text="🛎 Рум‑сервис"),
-            KeyboardButton(text="🍳 Завтраки")
+            KeyboardButton(text=button_text("in_room_service")),
+            KeyboardButton(text=button_text("in_breakfasts"))
         ],
         [
-            KeyboardButton(text="🗺 Гид"),
-            KeyboardButton(text="🌤 Погода")
+            KeyboardButton(text=button_text("in_guide")),
+            KeyboardButton(text=button_text("in_weather"))
         ],
         [
-            KeyboardButton(text="🆘 SOS"),
-            KeyboardButton(text="👤 Личный кабинет")
+            KeyboardButton(text=button_text("in_sos")),
+            KeyboardButton(text=button_text("in_profile"))
         ],
-        [KeyboardButton(text="🏠 Главное меню")],
+        [KeyboardButton(text=button_text("main_home"))],
     ]
     return ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -333,21 +348,21 @@ def build_in_house_reply_keyboard() -> ReplyKeyboardMarkup:
 def build_pre_arrival_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build reply keyboard for pre-arrival menu section."""
     buttons = [
-        [KeyboardButton(text="🏨 Забронировать номер")],
-        [KeyboardButton(text="🛏 Номера и цены")],
+        [KeyboardButton(text=button_text("pre_book_room"))],
+        [KeyboardButton(text=button_text("pre_rooms_prices"))],
         [
-            KeyboardButton(text="🌲 Об отеле"),
-            KeyboardButton(text="🎉 Мероприятия")
+            KeyboardButton(text=button_text("pre_about_hotel")),
+            KeyboardButton(text=button_text("pre_events"))
         ],
         [
-            KeyboardButton(text="📍 Как добраться"),
-            KeyboardButton(text="❓ Вопросы")
+            KeyboardButton(text=button_text("pre_route")),
+            KeyboardButton(text=button_text("pre_faq"))
         ],
         [
-            KeyboardButton(text="🍽 Ресторан"),
-            KeyboardButton(text="📞 Администратор")
+            KeyboardButton(text=button_text("pre_restaurant")),
+            KeyboardButton(text=button_text("main_admin"))
         ],
-        [KeyboardButton(text="🏠 Главное меню")],
+        [KeyboardButton(text=button_text("main_home"))],
     ]
     return ReplyKeyboardMarkup(
         keyboard=buttons,
@@ -361,12 +376,12 @@ def build_menu_reply_keyboard() -> ReplyKeyboardMarkup:
     """Build reply keyboard for menu/restaurant section."""
     buttons = [
         [
-            KeyboardButton(text="🍳 Завтрак"),
-            KeyboardButton(text="🍽 Обед"),
-            KeyboardButton(text="🌙 Ужин")
+            KeyboardButton(text=button_text("menu_breakfast")),
+            KeyboardButton(text=button_text("menu_lunch")),
+            KeyboardButton(text=button_text("menu_dinner"))
         ],
-        [KeyboardButton(text="🛒 Корзина")],
-        [KeyboardButton(text="🏠 Главное меню")],
+        [KeyboardButton(text=button_text("menu_cart"))],
+        [KeyboardButton(text=button_text("main_home"))],
     ]
     return ReplyKeyboardMarkup(
         keyboard=buttons,

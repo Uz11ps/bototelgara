@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 import aiohttp
+from bot.utils.reply_texts import button_text
 
 router = Router()
 
@@ -18,7 +19,7 @@ async def show_weather(callback: CallbackQuery):
     )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_in_house")]
+        [InlineKeyboardButton(text=button_text("weather_back"), callback_data="back_to_in_house")]
     ])
     
     try:

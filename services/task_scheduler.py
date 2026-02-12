@@ -14,6 +14,13 @@ from config import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def to_local_naive(dt: datetime) -> datetime:
+    """Normalize datetime to local naive for consistent comparisons."""
+    if dt.tzinfo is not None:
+        return dt.astimezone().replace(tzinfo=None)
+    return dt
+
 async def task_scheduler_loop(bot):
     """Loop to check for scheduled tasks."""
     logger.info("Task Scheduler started")
@@ -30,7 +37,7 @@ async def check_scheduled_tasks(bot):
     """Check database for tasks that need notifications."""
     db = SessionLocal()
     try:
-        now = datetime.utcnow()
+        now = datetime.now()
         # Find tasks scheduled within next 15 minutes that haven't been notified
         # OR tasks that are due now
         
@@ -44,9 +51,10 @@ async def check_scheduled_tasks(bot):
         ).all()
         
         for task in tasks:
+            task_time = to_local_naive(task.scheduled_at)
             # Calculate time difference in minutes
             # positive = future, negative = past
-            time_diff = (task.scheduled_at - now).total_seconds() / 60
+            time_diff = (task_time - now).total_seconds() / 60
             
             # 1. Reminder (15 mins before)
             # If between 0 and 15 mins (inclusive), and not sent
@@ -66,12 +74,17 @@ async def send_task_notification(bot, task: StaffTask, db: Session, is_start: bo
     if not task.assigned_to:
         return
 
-    # Find staff to get telegram_id (task.assigned_to is properly the Staff ID now, 
-    # but we need to fetch the staff object to get the real Telegram ID)
-    
-    staff = db.query(Staff).filter(Staff.id == task.assigned_to).first()
+    # Try by telegram_id first
+    staff = db.query(Staff).filter(Staff.telegram_id == task.assigned_to).first()
+    # Backward compatibility: some old tasks might store staff.id in assigned_to
+    if not staff and str(task.assigned_to).isdigit():
+        staff = db.query(Staff).filter(Staff.id == int(task.assigned_to)).first()
+        if staff and staff.telegram_id:
+            task.assigned_to = str(staff.telegram_id)
+            db.commit()
+
     if not staff or not staff.telegram_id:
-        logger.warning(f"Cannot notify staff {task.assigned_to} for task {task.id}: No Telegram ID")
+        logger.warning(f"Cannot notify staff with telegram_id {task.assigned_to} for task {task.id}: Staff not found or no Telegram ID")
         return
 
     try:

@@ -4,6 +4,7 @@ FastAPI web admin panel for managing hotel tickets.
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ import asyncio
 from sqlalchemy.orm import Session
 
 import aiohttp
+import yaml
 
 from db.models import Ticket, TicketMessage, TicketMessageSender, TicketStatus, TicketType, MenuItem, GuideItem, StaffTask, User, Staff, StaffRole, GuestBooking, CleaningRequest, MenuCategory, AdminUser
 from db.session import SessionLocal
@@ -24,6 +26,10 @@ from config import get_settings
 
 
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+CONTENT_DIR = PROJECT_ROOT / "content"
+MENUS_PATH = CONTENT_DIR / "menus.ru.yml"
+REPLY_BUTTONS_PATH = CONTENT_DIR / "reply_buttons.ru.yml"
 
 # --- Direct Telegram Bot API helper ---
 _settings = get_settings()
@@ -87,6 +93,22 @@ class TicketResponse(BaseModel):
     room_number: Optional[str]
     created_at: datetime
     updated_at: datetime
+
+
+def _read_yaml_file(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=500, detail=f"Invalid YAML structure: {path.name}")
+    return data
+
+
+def _write_yaml_file(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False)
     
     class Config:
         from_attributes = True
@@ -423,6 +445,32 @@ async def delete_guide_item(item_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Guide item {item_id} deleted"}
 
+
+@app.get("/api/content/button-texts")
+async def get_button_texts():
+    """Return editable bot button texts for admin panel."""
+    return {
+        "reply_buttons": _read_yaml_file(REPLY_BUTTONS_PATH),
+        "menus": _read_yaml_file(MENUS_PATH),
+    }
+
+
+@app.put("/api/content/button-texts")
+async def update_button_texts(payload: dict):
+    """Update editable button texts and reload content cache."""
+    reply_buttons = payload.get("reply_buttons")
+    menus = payload.get("menus")
+    if not isinstance(reply_buttons, dict) or not isinstance(menus, dict):
+        raise HTTPException(status_code=400, detail="reply_buttons and menus must be objects")
+
+    _write_yaml_file(REPLY_BUTTONS_PATH, reply_buttons)
+    _write_yaml_file(MENUS_PATH, menus)
+
+    from services.content import content_manager
+
+    content_manager.reload()
+    return {"status": "ok"}
+
 @app.get("/api/staff/tasks")
 async def get_staff_tasks(db: Session = Depends(get_db)):
     return db.query(StaffTask).order_by(StaffTask.created_at.desc()).all()
@@ -435,6 +483,9 @@ async def create_staff_task(task: dict, db: Session = Depends(get_db)):
             try:
                 # Ensure valid ISO format
                  dt = datetime.fromisoformat(task["scheduled_at"].replace("Z", "+00:00"))
+                 # Keep local naive datetime (server local time, MSK)
+                 if dt.tzinfo is not None:
+                     dt = dt.astimezone().replace(tzinfo=None)
                  task["scheduled_at"] = dt
             except ValueError as e:
                 logger.error(f"Invalid date format: {task['scheduled_at']} - {e}")
@@ -442,9 +493,16 @@ async def create_staff_task(task: dict, db: Session = Depends(get_db)):
         else:
             task["scheduled_at"] = None
         
-        # Ensure assigned_to is string to match model (it was defined as String)
+        # Ensure assigned_to is normalized to staff telegram_id
         if "assigned_to" in task and task["assigned_to"]:
-            task["assigned_to"] = str(task["assigned_to"])
+            raw_assigned_to = str(task["assigned_to"]).strip()
+            staff = db.query(Staff).filter(Staff.telegram_id == raw_assigned_to).first()
+            if not staff and raw_assigned_to.isdigit():
+                # Backward compatibility: UI or old data can send staff.id
+                staff = db.query(Staff).filter(Staff.id == int(raw_assigned_to)).first()
+            if not staff or not staff.telegram_id:
+                raise HTTPException(status_code=400, detail="У сотрудника не указан корректный Telegram ID")
+            task["assigned_to"] = str(staff.telegram_id)
         else:
             task["assigned_to"] = None
 
@@ -452,7 +510,39 @@ async def create_staff_task(task: dict, db: Session = Depends(get_db)):
         db.add(new_task)
         db.commit()
         db.refresh(new_task)
+        
+        # Send notification to assigned staff member immediately
+        if new_task.assigned_to:
+            try:
+                # Find staff member by telegram_id
+                staff = db.query(Staff).filter(Staff.telegram_id == new_task.assigned_to).first()
+                if staff and staff.telegram_id:
+                    # Build notification message
+                    msg = "📋 <b>Новая задача назначена</b>\n\n"
+                    msg += f"🏨 <b>Комната:</b> {new_task.room_number}\n"
+                    msg += f"📌 <b>Тип:</b> {new_task.task_type}\n"
+                    if new_task.scheduled_at:
+                        msg += f"🕒 <b>Запланировано на:</b> {new_task.scheduled_at.strftime('%d.%m.%Y %H:%M')}\n"
+                    if new_task.description:
+                        msg += f"\n📝 <b>Описание:</b>\n{new_task.description}\n"
+                    msg += f"\n🆔 <b>ID задачи:</b> #{new_task.id}"
+                    
+                    # Send via Telegram Bot API
+                    sent = await send_telegram_message(staff.telegram_id, msg)
+                    if sent:
+                        logger.info(f"Task notification sent to staff {staff.full_name} (telegram_id: {staff.telegram_id}) for task #{new_task.id}")
+                    else:
+                        logger.warning(f"Failed to send task notification to staff {staff.full_name} (telegram_id: {staff.telegram_id})")
+                else:
+                    logger.warning(f"Staff member with telegram_id {new_task.assigned_to} not found or has no telegram_id")
+            except Exception as e:
+                logger.error(f"Error sending task notification: {e}")
+                # Don't fail task creation if notification fails
+        
         return new_task
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         logger.error(f"Error creating task: {e}")
         db.rollback()

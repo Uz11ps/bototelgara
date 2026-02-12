@@ -10,11 +10,10 @@ from bot.keyboards.main_menu import (
     build_breakfast_after_deadline_menu,
     build_breakfast_confirm_menu,
     build_breakfast_entry_menu,
-    build_in_house_menu,
-    build_room_service_menu,
     build_contact_admin_type_menu,
 )
 from bot.states import FlowState
+from bot.utils.reply_keyboards import build_role_reply_keyboard
 from services.content import content_manager
 
 
@@ -27,10 +26,7 @@ async def handle_back_to_in_house(callback: CallbackQuery, state: FSMContext) ->
     await state.set_state(FlowState.in_house_menu)
     text = content_manager.get_text("menus.in_house_title")
     from bot.keyboards.main_menu import build_in_house_reply_keyboard
-    try:
-        await callback.message.edit_text(text, reply_markup=build_in_house_menu())
-    except Exception:
-        pass  # Ignore if message unchanged
+    await callback.message.answer(text)
     # Обновляем slash-меню
     await callback.message.answer(
         "Используйте кнопки ниже для навигации:",
@@ -47,7 +43,7 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
         await state.set_state(FlowState.room_service_choosing_branch)
         text = content_manager.get_text("room_service.what_do_you_need")
         from bot.keyboards.main_menu import build_room_service_reply_keyboard
-        await callback.message.answer(text, reply_markup=build_room_service_menu())
+        await callback.message.answer(text)
         # Обновляем slash-меню
         await callback.message.answer(
             "Используйте кнопки ниже для выбора:",
@@ -71,10 +67,7 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
     if key == "in_admin":
         await state.set_state(FlowState.contact_admin_type)
         from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
-        await callback.message.answer(
-            "Выберите, кто вы:",
-            reply_markup=build_contact_admin_type_menu()
-        )
+        await callback.message.answer("Выберите, кто вы:")
         # Обновляем slash-меню
         await callback.message.answer(
             "Используйте кнопки ниже для выбора:",
@@ -110,10 +103,7 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
 
     text = content_manager.get_text(text_key)
     await callback.message.answer(text)
-    await callback.message.answer(
-        content_manager.get_text("menus.in_house_title"),
-        reply_markup=build_in_house_menu(),
-    )
+    await callback.message.answer(content_manager.get_text("menus.in_house_title"))
 
 
 @router.callback_query(FlowState.breakfast_entry)
@@ -176,10 +166,7 @@ async def handle_breakfast_confirm(callback: CallbackQuery, state: FSMContext) -
 
     if key == "breakfast_confirm_no":
         await state.set_state(FlowState.in_house_menu)
-        await callback.message.answer(
-            content_manager.get_text("breakfast.order_cancelled"),
-            reply_markup=build_in_house_menu(),
-        )
+        await callback.message.answer(content_manager.get_text("breakfast.order_cancelled"))
         return
 
     if key != "breakfast_confirm_yes":
@@ -232,11 +219,10 @@ async def handle_breakfast_confirm(callback: CallbackQuery, state: FSMContext) -
     bot: Bot = callback.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await callback.message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(callback.from_user.id))
     )
     await callback.answer()
 
@@ -298,12 +284,11 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
         )
     except TicketRateLimitExceededError:
         warning = "Вы отправили слишком много заявок. Пожалуйста, подождите."
-        from bot.keyboards.main_menu import build_main_reply_keyboard
         await message.answer(warning)
         await state.clear()
         await message.answer(
             "Используйте кнопки ниже для навигации:",
-            reply_markup=build_main_reply_keyboard()
+            reply_markup=build_role_reply_keyboard(str(message.from_user.id))
         )
         return
     
@@ -313,11 +298,10 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
     bot: Bot = message.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
     
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(message.from_user.id))
     )
 
 
@@ -334,10 +318,7 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
 
     if key == "breakfast_cancel":
         await state.set_state(FlowState.in_house_menu)
-        await callback.message.answer(
-            content_manager.get_text("breakfast.after_deadline_cancelled"),
-            reply_markup=build_in_house_menu(),
-        )
+        await callback.message.answer(content_manager.get_text("breakfast.after_deadline_cancelled"))
         return
 
     if key != "breakfast_contact_admin":
@@ -361,12 +342,11 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
         )
     except TicketRateLimitExceededError:
         warning = content_manager.get_text("tickets.rate_limited")
-        from bot.keyboards.main_menu import build_main_reply_keyboard
         await callback.message.answer(warning)
         await state.clear()
         await callback.message.answer(
             "Используйте кнопки ниже для навигации:",
-            reply_markup=build_main_reply_keyboard()
+            reply_markup=build_role_reply_keyboard(str(callback.from_user.id))
         )
         await callback.answer()
         return
@@ -377,9 +357,8 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
     bot: Bot = callback.bot  # type: ignore[assignment]
     await notify_admins_about_ticket(bot, ticket, summary)
 
-    from bot.keyboards.main_menu import build_main_reply_keyboard
     await state.clear()
     await callback.message.answer(
         "Используйте кнопки ниже для навигации:",
-        reply_markup=build_main_reply_keyboard()
+        reply_markup=build_role_reply_keyboard(str(callback.from_user.id))
     )

@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from db.session import SessionLocal
 from db.models import User
+from bot.utils.reply_texts import button_text
 
 router = Router()
 
@@ -28,9 +29,9 @@ async def show_loyalty(callback: CallbackQuery):
         )
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📜 История посещений", callback_data="loyalty_history")],
-        [InlineKeyboardButton(text="🔄 Как потратить баллы?", callback_data="loyalty_info")],
-        [InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_in_house")]
+        [InlineKeyboardButton(text=button_text("loyalty_history"), callback_data="loyalty_history")],
+        [InlineKeyboardButton(text=button_text("loyalty_info"), callback_data="loyalty_info")],
+        [InlineKeyboardButton(text=button_text("guide_back"), callback_data="back_to_in_house")]
     ])
     
     try:
