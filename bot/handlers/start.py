@@ -8,6 +8,7 @@ from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from bot.states import FlowState
 from bot.utils.reply_keyboards import build_role_reply_keyboard
 from bot.utils.reply_texts import button_text
+from services.shelter_access import can_user_use_room_service
 from services.content import content_manager
 
 
@@ -124,6 +125,10 @@ async def reply_admin_type_selection(message: Message, state: FSMContext) -> Non
 }))
 async def reply_room_service_selection(message: Message, state: FSMContext) -> None:
     """Handle room service selection from reply keyboard."""
+    if not await can_user_use_room_service(str(message.from_user.id)):
+        await state.clear()
+        await message.answer("нет доступа")
+        return
 
     mapping = {
         button_text("room_technical"): "rs_technical_problem",
@@ -153,6 +158,10 @@ async def reply_in_house_menu_selection(message: Message, state: FSMContext) -> 
 
     # Имитируем callback для существующих обработчиков
     if message.text == button_text("in_room_service"):
+        if not await can_user_use_room_service(str(message.from_user.id)):
+            await state.clear()
+            await message.answer("нет доступа")
+            return
         await state.set_state(FlowState.room_service_choosing_branch)
         text = content_manager.get_text("room_service.what_do_you_need")
         from bot.keyboards.main_menu import build_room_service_reply_keyboard
@@ -255,6 +264,10 @@ async def reply_admin_contact(message: Message, state: FSMContext) -> None:
 
 @router.message(F.text.func(lambda value: value == button_text("main_room_service")))
 async def reply_room_service(message: Message, state: FSMContext) -> None:
+    if not await can_user_use_room_service(str(message.from_user.id)):
+        await state.clear()
+        await message.answer("нет доступа")
+        return
     from bot.keyboards.main_menu import build_room_service_reply_keyboard
     await state.set_state(FlowState.room_service_choosing_branch)
     text = content_manager.get_text("room_service.what_do_you_need")

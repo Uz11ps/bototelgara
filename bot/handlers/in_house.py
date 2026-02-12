@@ -15,6 +15,7 @@ from bot.keyboards.main_menu import (
 from bot.states import FlowState
 from bot.utils.reply_keyboards import build_role_reply_keyboard
 from services.content import content_manager
+from services.shelter_access import can_user_use_room_service
 
 
 router = Router()
@@ -40,6 +41,10 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
     key = callback.data or ""
 
     if key == "in_room_service":
+        if not await can_user_use_room_service(str(callback.from_user.id)):
+            await state.clear()
+            await callback.message.answer("нет доступа")
+            return
         await state.set_state(FlowState.room_service_choosing_branch)
         text = content_manager.get_text("room_service.what_do_you_need")
         from bot.keyboards.main_menu import build_room_service_reply_keyboard

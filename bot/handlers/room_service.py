@@ -9,6 +9,7 @@ from bot.utils.reply_keyboards import build_role_reply_keyboard
 from db.models import TicketType
 from services.admins import notify_admins_about_ticket
 from services.content import content_manager
+from services.shelter_access import can_use_room_service, can_user_use_room_service
 from services.tickets import TicketRateLimitExceededError, create_ticket
 
 
@@ -18,6 +19,10 @@ router = Router()
 @router.callback_query(FlowState.room_service_choosing_branch)
 async def choose_room_service_branch(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()  # Acknowledge immediately to prevent freezing
+    if not await can_user_use_room_service(str(callback.from_user.id)):
+        await state.clear()
+        await callback.message.answer("нет доступа")
+        return
     key = callback.data or ""
 
     if key == "rs_technical_problem":
@@ -45,6 +50,15 @@ async def choose_room_service_branch(callback: CallbackQuery, state: FSMContext)
 @router.message(FlowState.room_service_room_number)
 async def room_service_room_number(message: Message, state: FSMContext) -> None:
     room_number = message.text or ""
+    if not await can_use_room_service(room_number):
+        await message.answer("нет доступа")
+        await state.clear()
+        await message.answer(
+            "Используйте кнопки ниже для навигации:",
+            reply_markup=build_role_reply_keyboard(str(message.from_user.id))
+        )
+        return
+
     await state.update_data(room_number=room_number)
     
     data = await state.get_data()
