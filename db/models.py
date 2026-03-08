@@ -67,6 +67,9 @@ class Ticket(Base):
 
     payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    dialog_open: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    dialog_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    dialog_last_activity_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     messages: Mapped[list["TicketMessage"]] = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
 
@@ -117,6 +120,30 @@ class MenuItem(Base):
     admin_comment: Mapped[str | None] = mapped_column(Text, nullable=True)  # Comment for guests
 
 
+class MenuCategorySetting(Base):
+    __tablename__ = "menu_category_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    category: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    is_enabled: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+
+class EventItem(Base):
+    __tablename__ = "event_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    location_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    map_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    starts_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    ends_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
+    publish_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    publish_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+
+
 class GuideItem(Base):
     __tablename__ = "guide_items"
 
@@ -136,7 +163,9 @@ class StaffTask(Base):
     task_type: Mapped[str] = mapped_column(String(64), nullable=False) # e.g., 'cleaning', 'maintenance'
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), default="PENDING", nullable=False) # 'PENDING', 'IN_PROGRESS', 'COMPLETED'
-    assigned_to: Mapped[str | None] = mapped_column(String(64), nullable=True) # Staff telegram_id
+    assigned_to: Mapped[str | None] = mapped_column(String(64), nullable=True) # Staff identifier (id preferred, telegram_id legacy)
+    notification_sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    scheduled_for_utc: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     
@@ -180,6 +209,8 @@ class GuestBooking(Base):
     check_in_date: Mapped[date] = mapped_column(Date, nullable=False)
     check_out_date: Mapped[date] = mapped_column(Date, nullable=False)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    checkin_notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    checkout_notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     cleaning_requests: Mapped[list["CleaningRequest"]] = relationship("CleaningRequest", back_populates="guest_booking")

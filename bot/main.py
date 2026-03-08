@@ -15,9 +15,23 @@ from bot.handlers import register_handlers
 from bot.middleware import ThrottlingMiddleware, CallbackAnswerMiddleware
 from bot.handlers.cleaning_schedule import set_bot_instance, cleaning_scheduler_loop
 from services.bot_api_bridge import get_bot_bridge
+from services.guest_notifications import guest_notification_loop
+from services.tickets import close_expired_open_dialogs
 
 
 logger = logging.getLogger(__name__)
+
+
+async def open_dialog_expiry_loop() -> None:
+    """Close expired guest-admin dialogs periodically."""
+    while True:
+        try:
+            closed = close_expired_open_dialogs()
+            if closed:
+                logger.info("Auto-closed %s expired open dialogs", closed)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("Open dialog expiry loop error: %s", exc)
+        await asyncio.sleep(30)
 
 
 async def main() -> None:
@@ -46,6 +60,8 @@ async def main() -> None:
     
     # Start cleaning scheduler in background
     asyncio.create_task(cleaning_scheduler_loop())
+    asyncio.create_task(guest_notification_loop(bot))
+    asyncio.create_task(open_dialog_expiry_loop())
     
     # Start task scheduler
     from services.task_scheduler import task_scheduler_loop
@@ -73,7 +89,12 @@ async def main() -> None:
     await bot.delete_webhook(drop_pending_updates=True)
     
     logger.info("Starting GORA Telegram bot")
-    await dp.start_polling(bot, allowed_updates=['message', 'callback_query', 'inline_query'])
+    # Lower polling timeout to improve perceived responsiveness in unstable networks.
+    await dp.start_polling(
+        bot,
+        polling_timeout=3,
+        allowed_updates=["message", "callback_query", "inline_query"],
+    )
 
 
 if __name__ == "__main__":

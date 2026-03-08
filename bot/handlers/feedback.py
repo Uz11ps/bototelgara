@@ -14,8 +14,7 @@ from aiogram import Bot
 logger = logging.getLogger(__name__)
 router = Router()
 
-@router.message(F.text == "/feedback")
-async def start_feedback_manual(message: Message, state: FSMContext) -> None:
+async def _start_feedback_flow(message: Message, state: FSMContext) -> None:
     await state.set_state(FlowState.feedback_rating)
     welcome_text = (
         "🌟 <b>Обратная связь</b>\n\n"
@@ -30,6 +29,19 @@ async def start_feedback_manual(message: Message, state: FSMContext) -> None:
     builder.adjust(5)
     
     await message.answer(welcome_text, reply_markup=builder.as_markup())
+
+
+@router.message(F.text == "/feedback")
+async def start_feedback_manual(message: Message, state: FSMContext) -> None:
+    await _start_feedback_flow(message, state)
+
+
+@router.callback_query(F.data == "start_feedback")
+async def start_feedback_from_notification(callback: CallbackQuery, state: FSMContext) -> None:
+    await callback.answer()
+    if callback.message is None:
+        return
+    await _start_feedback_flow(callback.message, state)
 
 @router.callback_query(FlowState.feedback_rating, F.data.startswith("rating_"))
 async def handle_feedback_rating(callback: CallbackQuery, state: FSMContext) -> None:
