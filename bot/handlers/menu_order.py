@@ -17,10 +17,12 @@ from bot.keyboards.main_menu import (
     build_in_house_menu,
 )
 from bot.states import FlowState
-from db.models import MenuItem, MenuCategory, TicketType
+from bot.navigation import VIEW_MENU, nav_push
+from db.models import MenuItem, MenuCategory, MenuCategorySetting, TicketType
 from db.session import SessionLocal
 from services.content import content_manager
 from services.admins import notify_admins_about_ticket
+from services.guest_context import get_active_room_number
 from services.tickets import TicketRateLimitExceededError, create_ticket
 
 
@@ -62,37 +64,94 @@ def get_menu_item_by_id(item_id: int) -> MenuItem | None:
         return item
 
 
+def is_menu_category_enabled(category: str) -> bool:
+    try:
+        cat_value = MenuCategory(category).value
+    except ValueError:
+        return False
+    with SessionLocal() as db:
+        row = db.query(MenuCategorySetting).filter(MenuCategorySetting.category == cat_value).first()
+        if row is None:
+            return category == "breakfast"
+        return bool(row.is_enabled)
+
+
+async def _show_category_menu(message: Message, state: FSMContext, category: str) -> None:
+    """Render menu items for a specific category with cart controls."""
+    if not is_menu_category_enabled(category):
+        await message.answer(
+            "Эта категория сейчас недоступна.",
+            reply_markup=build_menu_categories_keyboard()
+        )
+        return
+
+    if category == "breakfast" and not is_breakfast_available():
+        await message.answer(
+            content_manager.get_text("menu.breakfast_unavailable"),
+            reply_markup=build_menu_categories_keyboard()
+        )
+        return
+
+    items = get_menu_items_by_category(category)
+    if not items:
+        await message.answer(
+            content_manager.get_text("menu.no_items_in_category"),
+            reply_markup=build_menu_categories_keyboard()
+        )
+        return
+
+    await state.update_data(current_category=category)
+    await state.set_state(FlowState.menu_item_selection)
+
+    data = await state.get_data()
+    cart = data.get("cart", {})
+    category_names = {
+        "breakfast": "🍳 Завтрак",
+        "lunch": "🍽 Обед",
+        "dinner": "🌙 Ужин"
+    }
+    text = f"<b>{category_names.get(category, category)}</b>\n\nВыберите блюда:"
+    await message.answer(
+        text,
+        reply_markup=build_menu_items_keyboard(items, category, cart),
+        parse_mode="HTML"
+    )
+
+
 @router.callback_query(F.data == "in_restaurant")
 async def handle_menu_entry(callback: CallbackQuery, state: FSMContext) -> None:
     """Entry point for menu/restaurant ordering."""
     await callback.answer()
+
+    # Show current breakfast composition from real menu data.
+    from bot.handlers.in_house import _build_breakfast_composition_from_menu
+    await callback.message.answer(_build_breakfast_composition_from_menu(), parse_mode="HTML")
     
     # Initialize empty cart if not exists
     data = await state.get_data()
     if "cart" not in data:
         await state.update_data(cart={})
-    
-    await state.set_state(FlowState.menu_category_choice)
-    
-    from bot.keyboards.main_menu import build_menu_reply_keyboard
-    text = content_manager.get_text("menu.category_prompt")
-    try:
-        await callback.message.edit_text(text, reply_markup=build_menu_categories_keyboard())
-    except Exception:
-        await callback.message.answer(text, reply_markup=build_menu_categories_keyboard())
-    # Обновляем slash-меню
-    await callback.message.answer(
-        "Используйте кнопки ниже для выбора категории:",
-        reply_markup=build_menu_reply_keyboard()
-    )
+    await state.update_data(menu_entry_source="in_restaurant")
+    await nav_push(state, VIEW_MENU)
+
+    # Breakfast should open directly without extra "choose breakfast" click.
+    await _show_category_menu(callback.message, state, "breakfast")
 
 
 @router.callback_query(F.data == "menu_back_categories")
 async def handle_back_to_categories(callback: CallbackQuery, state: FSMContext) -> None:
     """Go back to category selection."""
     await callback.answer()
+    data = await state.get_data()
+    if data.get("menu_entry_source") == "in_restaurant":
+        await state.set_state(FlowState.in_house_menu)
+        await callback.message.answer(
+            content_manager.get_text("menus.in_house_title"),
+            reply_markup=build_in_house_menu(),
+        )
+        return
+
     await state.set_state(FlowState.menu_category_choice)
-    
     text = content_manager.get_text("menu.category_prompt")
     try:
         await callback.message.edit_text(text, reply_markup=build_menu_categories_keyboard())
@@ -104,53 +163,8 @@ async def handle_back_to_categories(callback: CallbackQuery, state: FSMContext) 
 async def handle_category_selection(callback: CallbackQuery, state: FSMContext) -> None:
     """Handle category selection (breakfast, lunch, dinner)."""
     await callback.answer()
-    
     category = callback.data.replace("menu_cat_", "")
-    
-    # Check breakfast availability
-    if category == "breakfast" and not is_breakfast_available():
-        await callback.message.answer(
-            content_manager.get_text("menu.breakfast_unavailable"),
-            reply_markup=build_menu_categories_keyboard()
-        )
-        return
-    
-    # Get items for this category
-    items = get_menu_items_by_category(category)
-    
-    if not items:
-        await callback.message.answer(
-            content_manager.get_text("menu.no_items_in_category"),
-            reply_markup=build_menu_categories_keyboard()
-        )
-        return
-    
-    await state.update_data(current_category=category)
-    await state.set_state(FlowState.menu_item_selection)
-    
-    data = await state.get_data()
-    cart = data.get("cart", {})
-    
-    category_names = {
-        "breakfast": "🍳 Завтрак",
-        "lunch": "🍽 Обед",
-        "dinner": "🌙 Ужин"
-    }
-    
-    text = f"<b>{category_names.get(category, category)}</b>\n\nВыберите блюда:"
-    
-    try:
-        await callback.message.edit_text(
-            text,
-            reply_markup=build_menu_items_keyboard(items, category, cart),
-            parse_mode="HTML"
-        )
-    except Exception:
-        await callback.message.answer(
-            text,
-            reply_markup=build_menu_items_keyboard(items, category, cart),
-            parse_mode="HTML"
-        )
+    await _show_category_menu(callback.message, state, category)
 
 
 @router.callback_query(F.data.startswith("menu_item_info_"))
@@ -351,9 +365,20 @@ async def handle_cart_checkout(callback: CallbackQuery, state: FSMContext) -> No
 
 @router.message(FlowState.menu_guest_name)
 async def handle_guest_name(message: Message, state: FSMContext) -> None:
-    """Handle guest name and ask for room number."""
+    """Handle guest name and reuse saved room number when possible."""
     guest_name = message.text or ""
     await state.update_data(order_guest_name=guest_name)
+
+    room_number = get_active_room_number(str(message.from_user.id))
+    if room_number:
+        await state.update_data(order_room_number=room_number)
+        await state.set_state(FlowState.menu_guest_comment)
+        await message.answer(
+            f"🏨 Номер комнаты: {room_number}\n"
+            "📝 Добавьте комментарий к заказу (или напишите '-' чтобы пропустить):"
+        )
+        return
+
     await state.set_state(FlowState.menu_room_number)
     
     await message.answer("🏨 Введите номер вашей комнаты:")
@@ -433,7 +458,9 @@ async def handle_order_confirm(callback: CallbackQuery, state: FSMContext) -> No
     await callback.answer()
     
     data = await state.get_data()
-    cart = data.get("cart", {})
+    cart = dict(data.get("cart", {}))
+    # Сразу очищаем корзину, чтобы предотвратить дублирование при повторном нажатии
+    await state.update_data(cart={})
     comment = data.get("guest_comment", "")
     guest_name = data.get("order_guest_name", "") or callback.from_user.full_name
     room_number = data.get("order_room_number", "")

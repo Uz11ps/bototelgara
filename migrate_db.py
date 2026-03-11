@@ -128,6 +128,14 @@ def migrate():
     else:
         print("dialog_last_activity_at column already exists, skipping.")
 
+    if "admin_last_viewed_at" not in ticket_columns:
+        print("Adding admin_last_viewed_at column to tickets...")
+        cursor.execute("ALTER TABLE tickets ADD COLUMN admin_last_viewed_at DATETIME")
+        conn.commit()
+        print("  Done.")
+    else:
+        print("admin_last_viewed_at column already exists, skipping.")
+
     # Migration 7: Add event publication window fields
     cursor.execute("PRAGMA table_info(event_items)")
     event_columns = [row[1] for row in cursor.fetchall()]
@@ -175,6 +183,57 @@ def migrate():
         print("  Done.")
     else:
         print("checkout_notified column already exists, skipping.")
+
+    # Migration 9: Add phone index for users
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)")
+    conn.commit()
+    print("users phone index ensured.")
+
+    # Migration 10: Add Shelter sync fields to guest_bookings
+    cursor.execute("PRAGMA table_info(guest_bookings)")
+    guest_booking_columns = [row[1] for row in cursor.fetchall()]
+
+    if "shelter_reservation_id" not in guest_booking_columns:
+        print("Adding shelter_reservation_id column to guest_bookings...")
+        cursor.execute("ALTER TABLE guest_bookings ADD COLUMN shelter_reservation_id TEXT")
+        conn.commit()
+        print("  Done.")
+    else:
+        print("shelter_reservation_id column already exists, skipping.")
+
+    if "feedback_requested" not in guest_booking_columns:
+        print("Adding feedback_requested column to guest_bookings...")
+        cursor.execute("ALTER TABLE guest_bookings ADD COLUMN feedback_requested BOOLEAN DEFAULT 0 NOT NULL")
+        conn.commit()
+        print("  Done.")
+    else:
+        print("feedback_requested column already exists, skipping.")
+
+    if "feedback_requested_at" not in guest_booking_columns:
+        print("Adding feedback_requested_at column to guest_bookings...")
+        cursor.execute("ALTER TABLE guest_bookings ADD COLUMN feedback_requested_at DATETIME")
+        conn.commit()
+        print("  Done.")
+    else:
+        print("feedback_requested_at column already exists, skipping.")
+
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_guest_bookings_shelter_reservation_id ON guest_bookings(shelter_reservation_id)")
+    conn.commit()
+    print("guest_bookings shelter indexes ensured.")
+
+    # Migration 11: Create shelter_sync_state table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS shelter_sync_state (
+            id INTEGER PRIMARY KEY,
+            last_sync_at DATETIME,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cursor.execute("INSERT OR IGNORE INTO shelter_sync_state (id, last_sync_at, updated_at) VALUES (1, NULL, CURRENT_TIMESTAMP)")
+    conn.commit()
+    print("shelter_sync_state table ensured.")
     
     conn.close()
     print("Migrations complete!")

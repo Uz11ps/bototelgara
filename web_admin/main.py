@@ -3,9 +3,9 @@ FastAPI web admin panel for managing hotel tickets.
 """
 import logging
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import Any, List, Optional
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -13,11 +13,33 @@ from pydantic import BaseModel
 import os
 import subprocess
 import asyncio
-from sqlalchemy.orm import Session
+import yaml
+from uuid import uuid4
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import or_
 
-from db.models import Ticket, TicketMessage, TicketMessageSender, TicketStatus, TicketType, MenuItem, GuideItem, StaffTask, User, Staff, StaffRole, GuestBooking, CleaningRequest, MenuCategory, AdminUser
+from db.models import (
+    Ticket,
+    TicketMessage,
+    TicketMessageSender,
+    TicketStatus,
+    TicketType,
+    MenuItem,
+    GuideItem,
+    EventItem,
+    StaffTask,
+    User,
+    Staff,
+    StaffRole,
+    GuestBooking,
+    CleaningRequest,
+    MenuCategory,
+    MenuCategorySetting,
+    AdminUser,
+)
 from db.session import SessionLocal
 from services.shelter import get_shelter_client, ShelterAPIError
+from services.content import content_manager
 
 
 logger = logging.getLogger(__name__)
@@ -50,8 +72,13 @@ class TicketResponse(BaseModel):
     guest_chat_id: str
     guest_name: Optional[str]
     room_number: Optional[str]
+    dialog_open: bool = False
+    dialog_expires_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    last_message_at: Optional[datetime] = None
+    has_new_guest_message: bool = False
+    new_guest_messages_count: int = 0
     
     class Config:
         from_attributes = True
@@ -92,6 +119,183 @@ class StatisticsResponse(BaseModel):
     total_active: int
 
 
+class ContentUpdateRequest(BaseModel):
+    content: str
+
+
+class ButtonLabelUpdateItem(BaseModel):
+    path: str
+    label: str
+
+
+class ButtonLabelsUpdateRequest(BaseModel):
+    updates: List[ButtonLabelUpdateItem]
+
+
+class CategoryAvailabilityRequest(BaseModel):
+    is_enabled: bool
+
+
+def _menus_file_path() -> str:
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    return os.path.join(project_root, "content", "menus.ru.yml")
+
+
+def _texts_file_path() -> str:
+    project_root = os.path.dirname(os.path.dirname(__file__))
+    return os.path.join(project_root, "content", "texts.ru.yml")
+
+
+def _collect_button_labels(node: Any, prefix: str = "") -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    if isinstance(node, list):
+        for idx, item in enumerate(node):
+            current_prefix = f"{prefix}[{idx}]"
+            if isinstance(item, dict) and isinstance(item.get("label"), str):
+                items.append(
+                    {
+                        "path": f"{current_prefix}.label",
+                        "label": item["label"],
+                        "callback_data": item.get("callback_data"),
+                        "web_app": item.get("web_app"),
+                    }
+                )
+            items.extend(_collect_button_labels(item, current_prefix))
+    elif isinstance(node, dict):
+        for key, value in node.items():
+            current_prefix = f"{prefix}.{key}" if prefix else key
+            items.extend(_collect_button_labels(value, current_prefix))
+    return items
+
+
+def _path_tokens(path: str) -> list[str | int]:
+    tokens: list[str | int] = []
+    key = ""
+    i = 0
+    while i < len(path):
+        ch = path[i]
+        if ch == ".":
+            if key:
+                tokens.append(key)
+                key = ""
+            i += 1
+            continue
+        if ch == "[":
+            if key:
+                tokens.append(key)
+                key = ""
+            j = path.find("]", i)
+            if j == -1:
+                raise ValueError(f"Invalid path: {path}")
+            tokens.append(int(path[i + 1:j]))
+            i = j + 1
+            continue
+        key += ch
+        i += 1
+    if key:
+        tokens.append(key)
+    return tokens
+
+
+def _set_value_by_path(root: Any, path: str, value: Any) -> None:
+    tokens = _path_tokens(path)
+    if not tokens:
+        raise ValueError(f"Invalid path: {path}")
+    cur = root
+    for token in tokens[:-1]:
+        if isinstance(token, int):
+            if not isinstance(cur, list):
+                raise ValueError(f"Expected list at token {token} for path {path}")
+            cur = cur[token]
+        else:
+            if not isinstance(cur, dict):
+                raise ValueError(f"Expected dict at token {token} for path {path}")
+            cur = cur[token]
+    last = tokens[-1]
+    if isinstance(last, int):
+        if not isinstance(cur, list):
+            raise ValueError(f"Expected list for final token in path {path}")
+        cur[last] = value
+    else:
+        if not isinstance(cur, dict):
+            raise ValueError(f"Expected dict for final token in path {path}")
+        cur[last] = value
+
+
+def _sorted_ticket_messages(ticket: Ticket) -> list[TicketMessage]:
+    return sorted(ticket.messages or [], key=lambda message: message.created_at)
+
+
+def _new_guest_messages_count(ticket: Ticket) -> int:
+    """Количество непрочитанных сообщений гостя (показываем значок 🔔 только при наличии)."""
+    if ticket.status not in {TicketStatus.NEW, TicketStatus.PENDING_ADMIN}:
+        return 0
+
+    messages = _sorted_ticket_messages(ticket)
+    # Берём максимальную из: последний ответ админа или момент просмотра заявки админом
+    last_admin_at = max(
+        (message.created_at for message in messages if message.sender == TicketMessageSender.ADMIN),
+        default=None,
+    )
+    read_threshold = last_admin_at
+    if getattr(ticket, "admin_last_viewed_at", None) is not None:
+        read_threshold = max(read_threshold or datetime.min, ticket.admin_last_viewed_at)
+
+    count = 0
+    for message in messages:
+        if message.sender != TicketMessageSender.GUEST:
+            continue
+        if read_threshold is None or message.created_at > read_threshold:
+            count += 1
+    return count
+
+
+def _last_message_at(ticket: Ticket) -> datetime:
+    messages = _sorted_ticket_messages(ticket)
+    if messages:
+        return messages[-1].created_at
+    return ticket.updated_at
+
+
+def _serialize_message(message: TicketMessage) -> MessageResponse:
+    return MessageResponse(
+        id=message.id,
+        sender=message.sender.value if hasattr(message.sender, "value") else str(message.sender),
+        content=message.content,
+        created_at=message.created_at,
+        admin_telegram_id=message.admin_telegram_id,
+        admin_name=message.admin_name,
+    )
+
+
+def _serialize_ticket(ticket: Ticket) -> TicketResponse:
+    new_count = _new_guest_messages_count(ticket)
+    return TicketResponse(
+        id=ticket.id,
+        type=ticket.type.value if hasattr(ticket.type, "value") else str(ticket.type),
+        status=ticket.status.value if hasattr(ticket.status, "value") else str(ticket.status),
+        guest_chat_id=ticket.guest_chat_id,
+        guest_name=ticket.guest_name,
+        room_number=ticket.room_number,
+        dialog_open=bool(ticket.dialog_open),
+        dialog_expires_at=ticket.dialog_expires_at,
+        created_at=ticket.created_at,
+        updated_at=ticket.updated_at,
+        last_message_at=_last_message_at(ticket),
+        has_new_guest_message=new_count > 0,
+        new_guest_messages_count=new_count,
+    )
+
+
+def _serialize_ticket_detail(ticket: Ticket) -> TicketDetailResponse:
+    base = _serialize_ticket(ticket)
+    return TicketDetailResponse(
+        **base.model_dump(),
+        messages=[_serialize_message(message) for message in _sorted_ticket_messages(ticket)],
+        payload=ticket.payload,
+    )
+
+
 # API Routes
 @app.get("/api")
 async def root_api():
@@ -104,7 +308,7 @@ async def get_all_tickets(
     db: Session = Depends(get_db)
 ):
     """Get all tickets, optionally filtered by status."""
-    query = db.query(Ticket)
+    query = db.query(Ticket).options(selectinload(Ticket.messages))
     
     if status:
         try:
@@ -113,19 +317,28 @@ async def get_all_tickets(
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
     
-    tickets = query.order_by(Ticket.created_at.desc()).all()
-    return tickets
+    tickets = query.order_by(Ticket.updated_at.desc()).all()
+    return [_serialize_ticket(ticket) for ticket in tickets]
 
 
 @app.get("/api/tickets/{ticket_id}", response_model=TicketDetailResponse)
 async def get_ticket_detail(ticket_id: int, db: Session = Depends(get_db)):
-    """Get detailed information about a specific ticket."""
-    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    """Get detailed information about a specific ticket. При открытии заявки — помечаем прочитанной."""
+    ticket = (
+        db.query(Ticket)
+        .options(selectinload(Ticket.messages))
+        .filter(Ticket.id == ticket_id)
+        .first()
+    )
     
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
+
+    # Админ открыл заявку — сбрасываем значок непрочитанных
+    ticket.admin_last_viewed_at = datetime.utcnow()
+    db.commit()
     
-    return ticket
+    return _serialize_ticket_detail(ticket)
 
 
 @app.post("/api/tickets/{ticket_id}/messages", response_model=MessageResponse)
@@ -152,10 +365,27 @@ async def send_message_to_ticket(
     )
     
     db.add(message)
+    ticket.updated_at = datetime.utcnow()
+    if ticket.dialog_open:
+        ticket.dialog_last_activity_at = datetime.utcnow()
+        ticket.dialog_expires_at = datetime.utcnow() + timedelta(hours=1)
     db.commit()
     db.refresh(message)
     
     return message
+
+
+@app.post("/api/tickets/{ticket_id}/dialog/close")
+async def close_ticket_dialog(ticket_id: int, db: Session = Depends(get_db)):
+    """Manually close an open guest-admin dialog."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    ticket.dialog_open = False
+    ticket.dialog_expires_at = None
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    return {"success": True, "ticket_id": ticket_id, "dialog_open": False}
 
 
 @app.patch("/api/tickets/{ticket_id}/status")
@@ -175,29 +405,54 @@ async def update_ticket_status(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid status: {status_request.status}")
     
+    previous_status = ticket.status
     ticket.status = new_status
+    if new_status in {TicketStatus.COMPLETED, TicketStatus.DECLINED, TicketStatus.CANCELLED}:
+        ticket.dialog_open = False
+        ticket.dialog_expires_at = None
     ticket.updated_at = datetime.utcnow()
-    db.commit()
     
-    # Send notification to user via Telegram
+    # Queue a system notification for Telegram delivery when the status changes.
     try:
-        from services.content import content_manager
+        notification_text = None
         if new_status == TicketStatus.COMPLETED:
             notification_text = content_manager.get_text("tickets.resolved").format(ticket_id=ticket_id)
         elif new_status == TicketStatus.DECLINED:
             notification_text = content_manager.get_text("tickets.declined").format(ticket_id=ticket_id)
-        else:
-            notification_text = None
-        
-        if notification_text:
-            # The bot bridge will pick this up and send to user
-            # Or we can directly call the bot here (requires bot instance)
-            pass
+
+        if (
+            notification_text
+            and previous_status != new_status
+            and bool((ticket.guest_chat_id or "").strip())
+        ):
+            db.add(
+                TicketMessage(
+                    ticket_id=ticket.id,
+                    sender=TicketMessageSender.SYSTEM,
+                    content=notification_text,
+                    request_id=str(uuid4()),
+                )
+            )
     except Exception as e:
-        logger.error(f"Failed to prepare notification: {e}")
+        logger.error(f"Failed to queue ticket status notification: {e}")
+    
+    db.commit()
     
     return {"message": f"Ticket #{ticket_id} status updated to {new_status.value}"}
 
+@app.delete("/api/tickets/{ticket_id}")
+async def delete_ticket(ticket_id: int, db: Session = Depends(get_db)):
+    """Delete a ticket completely."""
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+    
+    # Also delete associated messages
+    db.query(TicketMessage).filter(TicketMessage.ticket_id == ticket_id).delete()
+    
+    db.delete(ticket)
+    db.commit()
+    return {"message": f"Ticket #{ticket_id} deleted"}
 
 @app.get("/api/statistics", response_model=StatisticsResponse)
 async def get_statistics(db: Session = Depends(get_db)):
@@ -278,9 +533,231 @@ async def get_shelter_availability(
 
 # --- Content Management Endpoints ---
 
+@app.get("/api/content/menus-ru")
+async def get_menus_ru_content():
+    """Get raw content of menus.ru.yml for admin editing."""
+    menus_path = _menus_file_path()
+    if not os.path.exists(menus_path):
+        raise HTTPException(status_code=404, detail="menus.ru.yml not found")
+    with open(menus_path, "r", encoding="utf-8") as f:
+        return {"content": f.read()}
+
+
+@app.put("/api/content/menus-ru")
+async def update_menus_ru_content(payload: ContentUpdateRequest):
+    """Update menus.ru.yml after YAML validation."""
+    try:
+        parsed = yaml.safe_load(payload.content)
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML error: {e}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Root YAML node must be a mapping/object")
+
+    menus_path = _menus_file_path()
+    with open(menus_path, "w", encoding="utf-8") as f:
+        f.write(payload.content)
+    content_manager.reload()
+
+    return {"success": True}
+
+
+class TextUpdateByPathRequest(BaseModel):
+    path: str
+    value: str
+
+
+@app.get("/api/content/texts-ru/json")
+async def get_texts_ru_json():
+    """Get parsed content of texts.ru.yml as JSON."""
+    texts_path = _texts_file_path()
+    if not os.path.exists(texts_path):
+        raise HTTPException(status_code=404, detail="texts.ru.yml not found")
+    with open(texts_path, "r", encoding="utf-8") as f:
+        try:
+            return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=500, detail=f"YAML parse error: {e}")
+
+
+@app.put("/api/content/texts-ru/json")
+async def update_texts_ru_json(payload: TextUpdateByPathRequest):
+    """Update a specific text value in texts.ru.yml by path."""
+    texts_path = _texts_file_path()
+    if not os.path.exists(texts_path):
+        raise HTTPException(status_code=404, detail="texts.ru.yml not found")
+
+    with open(texts_path, "r", encoding="utf-8") as f:
+        parsed = yaml.safe_load(f) or {}
+
+    try:
+        _set_value_by_path(parsed, payload.path, payload.value)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid path {payload.path}: {e}")
+
+    with open(texts_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(parsed, f, allow_unicode=True, sort_keys=False)
+    content_manager.reload()
+
+    return {"success": True}
+
+
+@app.get("/api/content/menus-ru/json")
+async def get_menus_ru_json():
+    """Get parsed content of menus.ru.yml as JSON."""
+    menus_path = _menus_file_path()
+    if not os.path.exists(menus_path):
+        raise HTTPException(status_code=404, detail="menus.ru.yml not found")
+    with open(menus_path, "r", encoding="utf-8") as f:
+        try:
+            return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise HTTPException(status_code=500, detail=f"YAML parse error: {e}")
+
+
+@app.get("/api/content/texts-ru")
+async def get_texts_ru_content():
+    """Get raw content of texts.ru.yml for admin editing."""
+    texts_path = _texts_file_path()
+    if not os.path.exists(texts_path):
+        raise HTTPException(status_code=404, detail="texts.ru.yml not found")
+    with open(texts_path, "r", encoding="utf-8") as f:
+        return {"content": f.read()}
+
+
+@app.put("/api/content/texts-ru")
+async def update_texts_ru_content(payload: ContentUpdateRequest):
+    """Update texts.ru.yml after YAML validation."""
+    try:
+        parsed = yaml.safe_load(payload.content)
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=400, detail=f"YAML error: {e}")
+
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Root YAML node must be a mapping/object")
+
+    texts_path = _texts_file_path()
+    with open(texts_path, "w", encoding="utf-8") as f:
+        f.write(payload.content)
+    content_manager.reload()
+
+    return {"success": True}
+
+
+@app.get("/api/content/button-labels")
+async def get_button_labels():
+    """Get all editable button labels from menus.ru.yml."""
+    menus_path = _menus_file_path()
+    if not os.path.exists(menus_path):
+        raise HTTPException(status_code=404, detail="menus.ru.yml not found")
+    with open(menus_path, "r", encoding="utf-8") as f:
+        parsed = yaml.safe_load(f) or {}
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Invalid menus.ru.yml structure")
+    buttons = _collect_button_labels(parsed)
+    buttons.sort(key=lambda x: x["path"])
+    return {"buttons": buttons}
+
+
+@app.put("/api/content/button-labels")
+async def update_button_labels(payload: ButtonLabelsUpdateRequest):
+    """Update only labels of buttons while preserving callback/web_app values."""
+    menus_path = _menus_file_path()
+    if not os.path.exists(menus_path):
+        raise HTTPException(status_code=404, detail="menus.ru.yml not found")
+
+    with open(menus_path, "r", encoding="utf-8") as f:
+        parsed = yaml.safe_load(f) or {}
+    if not isinstance(parsed, dict):
+        raise HTTPException(status_code=400, detail="Invalid menus.ru.yml structure")
+
+    for item in payload.updates:
+        label = (item.label or "").strip()
+        if not label:
+            raise HTTPException(status_code=400, detail=f"Label cannot be empty: {item.path}")
+        try:
+            _set_value_by_path(parsed, item.path, label)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid path {item.path}: {e}")
+
+    with open(menus_path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(parsed, f, allow_unicode=True, sort_keys=False)
+    content_manager.reload()
+
+    return {"success": True, "updated": len(payload.updates)}
+
 @app.get("/api/menu")
 async def get_menu(db: Session = Depends(get_db)):
     return db.query(MenuItem).all()
+
+
+def _ensure_menu_category_settings(db: Session) -> dict[str, bool]:
+    defaults = {
+        MenuCategory.BREAKFAST.value: True,
+        MenuCategory.LUNCH.value: False,
+        MenuCategory.DINNER.value: False,
+    }
+    legacy_map = {
+        "BREAKFAST": MenuCategory.BREAKFAST.value,
+        "LUNCH": MenuCategory.LUNCH.value,
+        "DINNER": MenuCategory.DINNER.value,
+    }
+
+    # Normalize legacy enum-name rows (BREAKFAST/LUNCH/DINNER) into lowercase values.
+    legacy_rows = db.query(MenuCategorySetting).filter(
+        MenuCategorySetting.category.in_(list(legacy_map.keys()))
+    ).all()
+    for legacy in legacy_rows:
+        target = legacy_map.get(str(legacy.category))
+        if not target:
+            continue
+        target_row = db.query(MenuCategorySetting).filter(MenuCategorySetting.category == target).first()
+        if target_row is None:
+            db.add(MenuCategorySetting(category=target, is_enabled=bool(legacy.is_enabled)))
+        else:
+            # Preserve "enabled" if it was switched on in any legacy row.
+            if bool(legacy.is_enabled) and not bool(target_row.is_enabled):
+                target_row.is_enabled = True
+        db.delete(legacy)
+
+    changed = False
+    for cat, default_enabled in defaults.items():
+        row = db.query(MenuCategorySetting).filter(MenuCategorySetting.category == cat).first()
+        if row is None:
+            db.add(MenuCategorySetting(category=cat, is_enabled=default_enabled))
+            changed = True
+    if changed or legacy_rows:
+        db.commit()
+
+    settings = db.query(MenuCategorySetting).all()
+    normalized: dict[str, bool] = {}
+    for s in settings:
+        key = str(s.category).lower()
+        normalized[key] = bool(s.is_enabled)
+    return normalized
+
+
+@app.get("/api/menu/category-settings")
+async def get_menu_category_settings(db: Session = Depends(get_db)):
+    return _ensure_menu_category_settings(db)
+
+
+@app.patch("/api/menu/category/{category}/enabled")
+async def set_menu_category_enabled(category: str, payload: CategoryAvailabilityRequest, db: Session = Depends(get_db)):
+    try:
+        cat_enum = MenuCategory(category)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid menu category")
+
+    _ensure_menu_category_settings(db)
+    row = db.query(MenuCategorySetting).filter(MenuCategorySetting.category == cat_enum.value).first()
+    if row is None:
+        row = MenuCategorySetting(category=cat_enum.value, is_enabled=payload.is_enabled)
+        db.add(row)
+    else:
+        row.is_enabled = payload.is_enabled
+    db.commit()
+    return {"category": cat_enum.value, "is_enabled": bool(payload.is_enabled)}
 
 @app.post("/api/menu")
 async def create_menu_item(item: dict, db: Session = Depends(get_db)):
@@ -372,12 +849,170 @@ async def delete_guide_item(item_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"message": f"Guide item {item_id} deleted"}
 
+
+@app.get("/api/events")
+async def get_events(db: Session = Depends(get_db)):
+    return db.query(EventItem).order_by(EventItem.starts_at.asc()).all()
+
+
+@app.get("/api/events/active")
+async def get_active_events(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    return db.query(EventItem).filter(
+        EventItem.is_active == True,
+        or_(EventItem.publish_from.is_(None), EventItem.publish_from <= now),
+        or_(EventItem.publish_until.is_(None), EventItem.publish_until >= now),
+    ).order_by(EventItem.starts_at.asc()).all()
+
+
+def _normalize_event_payload(payload: dict) -> dict:
+    normalized = dict(payload or {})
+    for key in ("starts_at", "ends_at", "publish_from", "publish_until"):
+        value = normalized.get(key)
+        if value == "":
+            normalized[key] = None
+            continue
+        if isinstance(value, str):
+            try:
+                normalized[key] = datetime.fromisoformat(value)
+            except ValueError:
+                raise HTTPException(status_code=400, detail=f"Invalid datetime for {key}")
+    starts_at = normalized.get("starts_at")
+    ends_at = normalized.get("ends_at")
+    if not starts_at or not ends_at:
+        raise HTTPException(status_code=400, detail="starts_at and ends_at are required")
+    if ends_at <= starts_at:
+        raise HTTPException(status_code=400, detail="ends_at must be later than starts_at")
+
+    if normalized.get("publish_from") is None:
+        # By default, announcement becomes visible immediately.
+        normalized["publish_from"] = datetime.utcnow()
+    if normalized.get("publish_until") is None:
+        normalized["publish_until"] = ends_at
+
+    publish_from = normalized.get("publish_from")
+    publish_until = normalized.get("publish_until")
+    if publish_from and publish_until and publish_until < publish_from:
+        raise HTTPException(status_code=400, detail="publish_until must be later than publish_from")
+    return normalized
+
+
+@app.post("/api/events")
+async def create_event_item(item: dict, db: Session = Depends(get_db)):
+    new_item = EventItem(**_normalize_event_payload(item))
+    db.add(new_item)
+    db.commit()
+    db.refresh(new_item)
+    return new_item
+
+
+@app.post("/api/events/upload-image")
+async def upload_event_image(file: UploadFile = File(...)):
+    """Upload image file for event and return public URL."""
+    content_type = (file.content_type or "").lower()
+    if not content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files are allowed")
+
+    uploads_root = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin_panel", "uploads", "events")
+    os.makedirs(uploads_root, exist_ok=True)
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif"}:
+        ext = ".jpg"
+    filename = f"{uuid4().hex}{ext}"
+    file_path = os.path.join(uploads_root, filename)
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty file")
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    return {"url": f"/uploads/events/{filename}"}
+
+
+@app.put("/api/events/{item_id}")
+async def update_event_item(item_id: int, item_data: dict, db: Session = Depends(get_db)):
+    item = db.query(EventItem).filter(EventItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Event item not found")
+    normalized = _normalize_event_payload({**{
+        "name": item.name,
+        "description": item.description,
+        "location_text": item.location_text,
+        "map_url": item.map_url,
+        "image_url": item.image_url,
+        "starts_at": item.starts_at,
+        "ends_at": item.ends_at,
+        "publish_from": item.publish_from,
+        "publish_until": item.publish_until,
+        "is_active": item.is_active,
+    }, **item_data})
+    for key, value in normalized.items():
+        if hasattr(item, key):
+            setattr(item, key, value)
+    db.commit()
+    db.refresh(item)
+    return item
+
+
+@app.delete("/api/events/{item_id}")
+async def delete_event_item(item_id: int, db: Session = Depends(get_db)):
+    item = db.query(EventItem).filter(EventItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Event item not found")
+    db.delete(item)
+    db.commit()
+    return {"message": f"Event item {item_id} deleted"}
+
 @app.get("/api/staff/tasks")
 async def get_staff_tasks(db: Session = Depends(get_db)):
     return db.query(StaffTask).order_by(StaffTask.created_at.desc()).all()
 
 @app.post("/api/staff/tasks")
 async def create_staff_task(task: dict, db: Session = Depends(get_db)):
+    # Notification timing (MSK): "now" or explicit HH:MM.
+    notify_mode = (task.pop("notify_mode", "now") or "now").strip().lower()
+    notify_time_msk = (task.pop("notify_time_msk", "") or "").strip()
+    scheduled_for_utc = None
+    if notify_mode == "at_time" and notify_time_msk:
+        try:
+            # MSK is UTC+3 all year.
+            hh, mm = [int(x) for x in notify_time_msk.split(":")]
+            now_utc = datetime.utcnow()
+            now_msk = now_utc + timedelta(hours=3)
+            target_msk = now_msk.replace(hour=hh, minute=mm, second=0, microsecond=0)
+            if target_msk <= now_msk:
+                target_msk = target_msk + timedelta(days=1)
+            scheduled_for_utc = target_msk - timedelta(hours=3)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Неверный формат времени. Используйте HH:MM")
+
+    assigned_to = task.get("assigned_to")
+    notification_sent = False
+
+    # Preferred assignment format is staff id from admin panel.
+    if assigned_to:
+        staff = None
+        assigned_str = str(assigned_to)
+        if assigned_str.isdigit():
+            staff = db.query(Staff).filter(Staff.id == int(assigned_str), Staff.is_active == True).first()
+        else:
+            # Backward compatibility for legacy tasks assigned by telegram_id.
+            staff = db.query(Staff).filter(Staff.telegram_id == assigned_str, Staff.is_active == True).first()
+
+        if not staff:
+            raise HTTPException(status_code=400, detail="Assigned staff member not found or inactive")
+
+        # Persist staff id for stable mapping even if telegram id changes later.
+        task["assigned_to"] = str(staff.id)
+        # If staff has no Telegram ID, don't keep retrying notifications forever.
+        notification_sent = not bool(staff.telegram_id)
+    else:
+        notification_sent = True
+
+    task["notification_sent"] = task.get("notification_sent", notification_sent)
+    task["scheduled_for_utc"] = scheduled_for_utc
     new_task = StaffTask(**task)
     db.add(new_task)
     db.commit()
@@ -392,6 +1027,74 @@ async def complete_staff_task(task_id: int, db: Session = Depends(get_db)):
         task.completed_at = datetime.utcnow()
         db.commit()
     return {"status": "ok"}
+
+@app.delete("/api/staff/tasks/{task_id}")
+async def delete_staff_task(task_id: int, db: Session = Depends(get_db)):
+    """Delete a completed staff task."""
+    task = db.query(StaffTask).filter(StaffTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Staff task not found")
+    if task.status != "COMPLETED":
+        raise HTTPException(status_code=400, detail="Можно удалять только выполненные задачи")
+
+    db.delete(task)
+    db.commit()
+    return {"success": True}
+
+
+@app.get("/api/pending-staff-task-notifications")
+async def get_pending_staff_task_notifications(db: Session = Depends(get_db)):
+    """Get staff tasks that need Telegram notification to assigned staff."""
+    now_utc = datetime.utcnow()
+    pending = db.query(StaffTask).filter(
+        StaffTask.notification_sent == False,
+        StaffTask.status == "PENDING",
+        StaffTask.assigned_to.isnot(None),
+        or_(StaffTask.scheduled_for_utc.is_(None), StaffTask.scheduled_for_utc <= now_utc),
+    ).order_by(StaffTask.created_at.asc()).all()
+
+    notifications = []
+    for task in pending:
+        staff = None
+        assigned_raw = (task.assigned_to or "").strip()
+
+        if assigned_raw.isdigit():
+            staff = db.query(Staff).filter(Staff.id == int(assigned_raw), Staff.is_active == True).first()
+        elif assigned_raw:
+            staff = db.query(Staff).filter(Staff.telegram_id == assigned_raw, Staff.is_active == True).first()
+
+        if not staff:
+            # No valid assignee left -> mark as processed to avoid endless polling.
+            task.notification_sent = True
+            continue
+
+        if not staff.telegram_id or not staff.telegram_id.isdigit():
+            task.notification_sent = True
+            continue
+
+        notifications.append(
+            {
+                "task_id": task.id,
+                "telegram_id": staff.telegram_id,
+                "staff_name": staff.full_name,
+                "room_number": task.room_number,
+                "task_type": task.task_type,
+                "description": task.description or "",
+            }
+        )
+
+    db.commit()
+    return notifications
+
+
+@app.post("/api/staff/tasks/{task_id}/mark-notified")
+async def mark_staff_task_notified(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(StaffTask).filter(StaffTask.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Staff task not found")
+    task.notification_sent = True
+    db.commit()
+    return {"success": True}
 
 # --- Staff Management Endpoints ---
 
@@ -684,9 +1387,9 @@ async def mark_notification_sent(ticket_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/undelivered-admin-messages")
 async def get_undelivered_admin_messages(db: Session = Depends(get_db)):
-    """Get admin messages that haven't been delivered to users via bot."""
+    """Get outbound ticket messages that haven't been delivered to users via bot."""
     messages = db.query(TicketMessage).filter(
-        TicketMessage.sender == TicketMessageSender.ADMIN,
+        TicketMessage.sender.in_([TicketMessageSender.ADMIN, TicketMessageSender.SYSTEM]),
         TicketMessage.bot_delivered == False,
     ).all()
     
@@ -702,6 +1405,7 @@ async def get_undelivered_admin_messages(db: Session = Depends(get_db)):
             "guest_chat_id": ticket.guest_chat_id,
             "content": msg.content,
             "admin_name": msg.admin_name or "Администратор",
+            "sender": msg.sender.value if hasattr(msg.sender, "value") else str(msg.sender),
         })
     
     return result
@@ -833,11 +1537,22 @@ async def get_cameras_info():
 # Serve static files from admin_panel directory
 admin_panel_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "admin_panel")
 mini_app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mini_app")
+uploads_path = os.path.join(admin_panel_path, "uploads")
 
 if os.path.exists(admin_panel_path):
     @app.get("/admin")
     async def serve_admin():
-        return FileResponse(os.path.join(admin_panel_path, "index.html"))
+        return FileResponse(
+            os.path.join(admin_panel_path, "index.html"),
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
+        )
+
+if os.path.exists(uploads_path):
+    app.mount("/uploads", StaticFiles(directory=uploads_path), name="uploads")
 
 # Serve mini app for guests (React build)
 react_build_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mini_app")

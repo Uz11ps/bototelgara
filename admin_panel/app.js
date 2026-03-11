@@ -8,16 +8,30 @@ class AdminApp {
         this.hotelParams = null;
         this.availability = null;
         this.menu = [];
+        this.menuCategorySettings = {};
         this.guide = [];
+        this.events = [];
         this.staffTasks = [];
         this.users = [];
         this.staff = [];
+        this.menusYamlContent = '';
+        this.menusYamlStatus = '';
+        this.menusJson = null;
+        this.textsYamlContent = '';
+        this.textsYamlStatus = '';
+        this.textsJson = null;
+        this.buttonLabels = [];
+        this.buttonLabelsStatus = '';
         this.currentTab = 'tickets';
+        this.ticketStatusFilter = null;
         this.isUserAdmin = false;
         this.editingMenuItem = null;
         this.editingGuideItem = null;
+        this.editingEventItem = null;
         this.editingStaff = null;
         this.tempCompositionItems = [];
+        this.messageDraft = '';
+        this.ticketDetailScrollBottomGap = 0;
         this.init();
     }
 
@@ -33,7 +47,14 @@ class AdminApp {
                 this.loadTickets(),
                 this.loadHotelParams(),
                 this.loadMenu(),
+                this.loadMenuCategorySettings(),
                 this.loadGuide(),
+                this.loadEvents(),
+                this.loadMenusYaml(),
+                this.loadMenusJson(),
+                this.loadTextsYaml(),
+                this.loadTextsJson(),
+                this.loadButtonLabels(),
                 this.loadStaffTasks(),
                 this.loadUsers(),
                 this.loadStaff()
@@ -49,9 +70,21 @@ class AdminApp {
         this.render();
 
         setInterval(() => {
-            if (this.isUserAdmin && this.currentTab === 'tickets') {
-                this.loadStatistics();
-                this.loadTickets();
+            if (this.isUserAdmin) {
+                if (this.currentTab === 'tickets') {
+                    this.loadStatistics();
+                    this.loadTickets();
+                    // Не обновлять детали заявки, если пользователь печатает в поле ответа (иначе курсор сбрасывается)
+                    const input = document.getElementById('messageInput');
+                    const userIsTyping = input && document.activeElement === input;
+                    if (this.currentTicket?.id && !userIsTyping) {
+                        this.loadTicketDetail(this.currentTicket.id, { preserveUiState: true });
+                    }
+                }
+                // Only refresh staff if not editing
+                if (this.currentTab === 'staff_management' && !this.editingStaff) {
+                    this.loadStaff();
+                }
             }
         }, 10000);
     }
@@ -78,23 +111,59 @@ class AdminApp {
         } catch (e) { console.error(e); }
     }
 
-    async loadTickets(status = null) {
+    async loadTickets(status = this.ticketStatusFilter) {
         try {
-            const url = status ? `${API_BASE}/tickets?status=${status}` : `${API_BASE}/tickets`;
+            this.ticketStatusFilter = status ?? null;
+            const url = this.ticketStatusFilter ? `${API_BASE}/tickets?status=${this.ticketStatusFilter}` : `${API_BASE}/tickets`;
             const response = await fetch(url);
             this.tickets = await response.json();
             this.renderTicketList();
         } catch (e) { console.error(e); }
     }
 
-    async loadTicketDetail(id) {
+    async loadTicketDetail(id, { preserveUiState = false } = {}) {
         try {
+            if (preserveUiState && this.currentTicket?.id === id) {
+                this.captureTicketDetailUiState();
+            } else {
+                this.messageDraft = '';
+                this.ticketDetailScrollBottomGap = 0;
+            }
             const response = await fetch(`${API_BASE}/tickets/${id}`);
             this.currentTicket = await response.json();
             this.renderTicketDetail();
+            this.restoreTicketDetailUiState();
         } catch (e) {
             console.error(e);
         }
+    }
+
+    captureTicketDetailUiState() {
+        const input = document.getElementById('messageInput');
+        if (input) {
+            this.messageDraft = input.value;
+        }
+        const messagesBox = document.getElementById('ticketMessagesContainer');
+        if (messagesBox) {
+            this.ticketDetailScrollBottomGap = Math.max(
+                messagesBox.scrollHeight - messagesBox.scrollTop - messagesBox.clientHeight,
+                0
+            );
+        }
+    }
+
+    restoreTicketDetailUiState() {
+        requestAnimationFrame(() => {
+            const input = document.getElementById('messageInput');
+            if (input) {
+                input.value = this.messageDraft || '';
+            }
+            const messagesBox = document.getElementById('ticketMessagesContainer');
+            if (messagesBox) {
+                const targetScrollTop = messagesBox.scrollHeight - messagesBox.clientHeight - this.ticketDetailScrollBottomGap;
+                messagesBox.scrollTop = Math.max(targetScrollTop, 0);
+            }
+        });
     }
 
     async loadHotelParams() {
@@ -124,11 +193,73 @@ class AdminApp {
         } catch (e) { console.error(e); }
     }
 
+    async loadMenuCategorySettings() {
+        try {
+            const r = await fetch(`${API_BASE}/menu/category-settings`);
+            this.menuCategorySettings = await r.json();
+        } catch (e) { console.error(e); }
+    }
+
     async loadGuide() {
         try {
             const r = await fetch(`${API_BASE}/guide`);
             this.guide = await r.json();
         } catch (e) { console.error(e); }
+    }
+
+    async loadEvents() {
+        try {
+            const r = await fetch(`${API_BASE}/events`);
+            this.events = await r.json();
+        } catch (e) { console.error(e); }
+    }
+
+    async loadMenusJson() {
+        try {
+            const r = await fetch(`${API_BASE}/content/menus-ru/json`);
+            this.menusJson = await r.json();
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async loadTextsJson() {
+        try {
+            const r = await fetch(`${API_BASE}/content/texts-ru/json`);
+            this.textsJson = await r.json();
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async loadMenusYaml() {
+        try {
+            const r = await fetch(`${API_BASE}/content/menus-ru`);
+            const data = await r.json();
+            this.menusYamlContent = data.content || '';
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async loadTextsYaml() {
+        try {
+            const r = await fetch(`${API_BASE}/content/texts-ru`);
+            const data = await r.json();
+            this.textsYamlContent = data.content || '';
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    async loadButtonLabels() {
+        try {
+            const r = await fetch(`${API_BASE}/content/button-labels`);
+            const data = await r.json();
+            this.buttonLabels = data.buttons || [];
+        } catch (e) {
+            console.error(e);
+        }
     }
 
     async loadStaffTasks() {
@@ -148,9 +279,9 @@ class AdminApp {
 
     async loadStaff() {
         try {
-            const r = await fetch(`${API_BASE}/staff`);
+            const r = await fetch(`${API_BASE}/staff?t=${Date.now()}`);
             this.staff = await r.json();
-            if (this.currentTab === 'staff_management') this.render();
+            if (this.currentTab === 'staff_management' && !this.editingStaff) this.render();
         } catch (e) { console.error(e); }
     }
 
@@ -240,6 +371,17 @@ class AdminApp {
         this.render();
     }
 
+    async toggleMenuCategory(category) {
+        const current = !!this.menuCategorySettings?.[category];
+        await fetch(`${API_BASE}/menu/category/${category}/enabled`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_enabled: !current })
+        });
+        await this.loadMenuCategorySettings();
+        this.render();
+    }
+
     async saveGuideItem(item) {
         const method = item.id ? 'PUT' : 'POST';
         const url = item.id ? `${API_BASE}/guide/${item.id}` : `${API_BASE}/guide`;
@@ -253,6 +395,139 @@ class AdminApp {
         this.render();
     }
 
+    async saveEventItem(item) {
+        const method = item.id ? 'PUT' : 'POST';
+        const url = item.id ? `${API_BASE}/events/${item.id}` : `${API_BASE}/events`;
+        await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item)
+        });
+        this.editingEventItem = null;
+        await this.loadEvents();
+        this.render();
+    }
+
+    async uploadEventImage() {
+        const fileInput = document.getElementById('eventImageFile');
+        const urlInput = document.getElementById('eventImageUrl');
+        if (!fileInput || !urlInput || !fileInput.files || !fileInput.files.length) {
+            alert('Выберите файл изображения');
+            return;
+        }
+        const file = fileInput.files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp = await fetch(`${API_BASE}/events/upload-image`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.detail || 'Не удалось загрузить изображение');
+            return;
+        }
+        const data = await resp.json();
+        urlInput.value = data.url || '';
+    }
+
+    async deleteEventItem(id) {
+        if (!confirm('Удалить это мероприятие?')) return;
+        await fetch(`${API_BASE}/events/${id}`, { method: 'DELETE' });
+        await this.loadEvents();
+        this.render();
+    }
+
+    async saveMenusYaml() {
+        const textarea = document.getElementById('menusYamlEditor');
+        if (!textarea) return;
+
+        this.menusYamlStatus = 'Сохранение...';
+        this.render();
+
+        try {
+            const resp = await fetch(`${API_BASE}/content/menus-ru`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: textarea.value }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                this.menusYamlStatus = `Ошибка: ${err.detail || 'не удалось сохранить'}`;
+                this.render();
+                return;
+            }
+            this.menusYamlContent = textarea.value;
+            this.menusYamlStatus = 'Сохранено. Изменения применены сразу.';
+            this.render();
+        } catch (e) {
+            this.menusYamlStatus = 'Ошибка сети при сохранении';
+            this.render();
+        }
+    }
+
+    async saveTextsYaml() {
+        const textarea = document.getElementById('textsYamlEditor');
+        if (!textarea) return;
+
+        this.textsYamlStatus = 'Сохранение...';
+        this.render();
+
+        try {
+            const resp = await fetch(`${API_BASE}/content/texts-ru`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: textarea.value }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                this.textsYamlStatus = `Ошибка: ${err.detail || 'не удалось сохранить'}`;
+                this.render();
+                return;
+            }
+            this.textsYamlContent = textarea.value;
+            this.textsYamlStatus = 'Сохранено. Тексты применены сразу.';
+            this.render();
+        } catch (e) {
+            this.textsYamlStatus = 'Ошибка сети при сохранении';
+            this.render();
+        }
+    }
+
+    async saveButtonLabels() {
+        const inputs = Array.from(document.querySelectorAll('.button-label-input'));
+        if (!inputs.length) return;
+
+        const updates = inputs.map((el) => ({
+            path: el.dataset.path,
+            label: el.value
+        }));
+
+        this.buttonLabelsStatus = 'Сохранение...';
+        this.render();
+
+        try {
+            const resp = await fetch(`${API_BASE}/content/button-labels`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ updates }),
+            });
+            if (!resp.ok) {
+                const err = await resp.json().catch(() => ({}));
+                this.buttonLabelsStatus = `Ошибка: ${err.detail || 'не удалось сохранить'}`;
+                this.render();
+                return;
+            }
+            this.buttonLabelsStatus = 'Названия кнопок сохранены и применены сразу.';
+            await this.loadButtonLabels();
+            await this.loadMenusYaml();
+            this.render();
+        } catch (e) {
+            this.buttonLabelsStatus = 'Ошибка сети при сохранении названий кнопок';
+            this.render();
+        }
+    }
+
     async deleteGuideItem(id) {
         if (!confirm('Удалить это место?')) return;
         await fetch(`${API_BASE}/guide/${id}`, { method: 'DELETE' });
@@ -263,14 +538,24 @@ class AdminApp {
     async saveStaff(staffData) {
         const method = staffData.id ? 'PUT' : 'POST';
         const url = staffData.id ? `${API_BASE}/staff/${staffData.id}` : `${API_BASE}/staff`;
-        await fetch(url, {
-            method,
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(staffData)
-        });
-        this.editingStaff = null;
-        await this.loadStaff();
-        this.render();
+        try {
+            const resp = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(staffData)
+            });
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert(err.detail || 'Ошибка при сохранении');
+                return;
+            }
+            this.editingStaff = null;
+            await this.loadStaff();
+            this.render();
+        } catch (e) {
+            console.error(e);
+            alert('Ошибка сети');
+        }
     }
 
     async deleteStaff(id) {
@@ -328,8 +613,10 @@ class AdminApp {
                             <button onclick="app.switchTab('shelter')" class="px-4 py-2 rounded-lg ${this.currentTab === 'shelter' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Shelter PMS</button>
                             <button onclick="app.switchTab('menu')" class="px-4 py-2 rounded-lg ${this.currentTab === 'menu' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Меню</button>
                             <button onclick="app.switchTab('guide')" class="px-4 py-2 rounded-lg ${this.currentTab === 'guide' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Гид</button>
+                            <button onclick="app.switchTab('events')" class="px-4 py-2 rounded-lg ${this.currentTab === 'events' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Мероприятия</button>
                             <button onclick="app.switchTab('staff')" class="px-4 py-2 rounded-lg ${this.currentTab === 'staff' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Задачи</button>
                             <button onclick="app.switchTab('staff_management')" class="px-4 py-2 rounded-lg ${this.currentTab === 'staff_management' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Сотрудники</button>
+                            <button onclick="app.switchTab('content_editor')" class="px-4 py-2 rounded-lg ${this.currentTab === 'content_editor' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Контент</button>
                             <button onclick="app.switchTab('cameras')" class="px-4 py-2 rounded-lg ${this.currentTab === 'cameras' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Камеры</button>
                             <button onclick="app.switchTab('marketing')" class="px-4 py-2 rounded-lg ${this.currentTab === 'marketing' ? 'bg-green-700 shadow-inner font-bold' : 'hover:bg-green-700'}">Маркетинг</button>
                         </nav>
@@ -341,9 +628,9 @@ class AdminApp {
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                             <div>
                                 <div class="mb-4 flex gap-2">
-                                    <button onclick="app.loadTickets()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Все</button>
-                                    <button onclick="app.loadTickets('PENDING_ADMIN')" class="px-4 py-2 bg-orange-600 text-white rounded-lg">Ожидают</button>
-                                    <button onclick="app.loadTickets('COMPLETED')" class="px-4 py-2 bg-green-600 text-white rounded-lg">Решено</button>
+                                    <button onclick="app.loadTickets(null)" class="px-4 py-2 rounded-lg ${this.ticketStatusFilter === null ? 'bg-blue-700 text-white font-bold shadow-inner' : 'bg-blue-600 text-white'}">Все</button>
+                                    <button onclick="app.loadTickets('PENDING_ADMIN')" class="px-4 py-2 rounded-lg ${this.ticketStatusFilter === 'PENDING_ADMIN' ? 'bg-orange-700 text-white font-bold shadow-inner' : 'bg-orange-600 text-white'}">Ожидают</button>
+                                    <button onclick="app.loadTickets('COMPLETED')" class="px-4 py-2 rounded-lg ${this.ticketStatusFilter === 'COMPLETED' ? 'bg-green-700 text-white font-bold shadow-inner' : 'bg-green-600 text-white'}">Решено</button>
                                 </div>
                                 <div id="ticketList" class="space-y-4 max-h-screen overflow-y-auto"></div>
                             </div>
@@ -360,8 +647,10 @@ class AdminApp {
             case 'shelter': return this.renderShelterTab();
             case 'menu': return this.renderMenuTab();
             case 'guide': return this.renderGuideTab();
+            case 'events': return this.renderEventsTab();
             case 'staff': return this.renderStaffTab();
             case 'staff_management': return this.renderStaffManagementTab();
+            case 'content_editor': return this.renderContentEditorTab();
             case 'cameras': return this.renderCamerasTab();
             case 'marketing': return this.renderMarketingTab();
             default: return '';
@@ -397,19 +686,45 @@ class AdminApp {
         `;
     }
 
+    async deleteTicket(id, event) {
+        if (event) {
+            event.stopPropagation();
+        }
+        if (!confirm('Вы уверены, что хотите удалить эту заявку? Это действие нельзя отменить.')) return;
+        
+        try {
+            await fetch(`${API_BASE}/tickets/${id}`, { method: 'DELETE' });
+            if (this.currentTicket && this.currentTicket.id === id) {
+                this.currentTicket = null;
+            }
+            await this.loadTickets();
+            await this.loadStatistics();
+        } catch (e) {
+            console.error('Failed to delete ticket', e);
+        }
+    }
+
     renderTicketList() {
         const container = document.getElementById('ticketList');
         if (!container) return;
         const colors = { 'NEW': 'bg-blue-100 text-blue-800', 'PENDING_ADMIN': 'bg-orange-100 text-orange-800', 'COMPLETED': 'bg-green-100 text-green-800', 'DECLINED': 'bg-red-100 text-red-800' };
+        const selectedTicketId = this.currentTicket?.id;
         container.innerHTML = this.tickets.map(t => `
-            <div onclick="app.loadTicketDetail(${t.id})" class="bg-white p-4 rounded-xl shadow hover:shadow-md cursor-pointer border-l-4 ${t.status === 'PENDING_ADMIN' ? 'border-orange-500' : 'border-gray-200'} transition">
-                <div class="flex justify-between items-start">
+            <div onclick="app.loadTicketDetail(${t.id})" class="bg-white p-4 rounded-xl shadow hover:shadow-md cursor-pointer border-l-4 transition relative group ${selectedTicketId === t.id ? 'ring-2 ring-blue-200 border-blue-500' : t.has_new_guest_message ? 'border-amber-500 bg-amber-50/40' : t.status === 'PENDING_ADMIN' ? 'border-orange-500' : 'border-gray-200'}">
+                <button onclick="app.deleteTicket(${t.id}, event)" class="absolute top-2 right-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-full w-6 h-6 flex items-center justify-center transition-colors hidden group-hover:flex" title="Удалить заявку">✕</button>
+                <div class="flex justify-between items-start pr-6">
                     <div class="font-bold text-lg">Заявка #${t.id}</div>
-                    <span class="text-[10px] px-2 py-1 rounded-full font-bold ${colors[t.status] || 'bg-gray-100'}">${t.status}</span>
+                    <div class="flex items-center gap-2">
+                        ${t.has_new_guest_message ? `<span class="inline-flex items-center gap-1 text-[10px] px-2 py-1 rounded-full font-bold bg-amber-100 text-amber-800">🔔 ${t.new_guest_messages_count}</span>` : ''}
+                        <span class="text-[10px] px-2 py-1 rounded-full font-bold ${colors[t.status] || 'bg-gray-100'}">${t.status}</span>
+                    </div>
                 </div>
                 <div class="text-sm text-gray-600 mt-2">
-                    <div>👤 ${t.guest_name || t.guest_chat_id}</div>
-                    <div class="text-[10px] text-gray-400 mt-1">🕐 ${new Date(t.created_at).toLocaleString('ru-RU')}</div>
+                    <div>👤 ${this.escapeHtml(t.guest_name || t.guest_chat_id)}</div>
+                    <div class="flex items-center justify-between gap-2 text-[10px] mt-1">
+                        <span class="text-gray-400">🕐 ${new Date(t.last_message_at || t.updated_at || t.created_at).toLocaleString('ru-RU')}</span>
+                        ${t.has_new_guest_message ? '<span class="font-semibold text-amber-700">Новое сообщение гостя</span>' : ''}
+                    </div>
                 </div>
             </div>
         `).join('') || '<div class="text-center text-gray-400 py-10">Нет заявок</div>';
@@ -421,9 +736,9 @@ class AdminApp {
         if (!this.currentTicket) { container.innerHTML = '<div class="bg-white p-10 rounded-xl shadow text-center text-gray-400 font-medium">Выберите заявку из списка слева</div>'; return; }
         const t = this.currentTicket;
         const msgs = t.messages.map(m => `
-            <div class="p-3 rounded-2xl ${m.sender === 'ADMIN' ? 'bg-blue-50 ml-8' : 'bg-gray-100 mr-8'} mb-3">
+            <div class="p-3 rounded-2xl ${m.sender === 'ADMIN' ? 'bg-blue-50 ml-8' : m.sender === 'SYSTEM' ? 'bg-slate-50 border border-slate-200 mx-4' : 'bg-gray-100 mr-8'} mb-3">
                 <div class="flex items-center gap-2 mb-1 text-[10px] font-bold text-gray-500">
-                    <span>${m.sender === 'ADMIN' ? '👨‍💼 ' + (m.admin_name || 'Админ') : '👤 Гость'}</span>
+                    <span>${m.sender === 'ADMIN' ? '👨‍💼 ' + (m.admin_name || 'Админ') : m.sender === 'SYSTEM' ? '⚙️ Система' : '👤 Гость'}</span>
                     <span>•</span>
                     <span>${new Date(m.created_at).toLocaleTimeString('ru-RU')}</span>
                 </div>
@@ -436,14 +751,36 @@ class AdminApp {
                     <h2 class="text-2xl font-black">Заявка #${t.id}</h2>
                     <button onclick="app.currentTicket = null; app.render()" class="text-gray-400 hover:text-gray-600 text-2xl">✕</button>
                 </div>
-                <div class="max-h-[400px] overflow-y-auto mb-6 px-2">${msgs}</div>
+                <div class="mb-3 text-sm ${t.dialog_open ? 'text-green-700' : 'text-gray-500'}">
+                    💬 Диалог: <b>${t.dialog_open ? 'Открыт' : 'Закрыт'}</b>
+                    ${t.dialog_expires_at ? ` · до ${new Date(t.dialog_expires_at).toLocaleString('ru-RU')}` : ''}
+                </div>
+                ${t.has_new_guest_message ? `<div class="mb-3 inline-flex items-center gap-2 px-3 py-2 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">🔔 Новые сообщения от гостя: ${t.new_guest_messages_count}</div>` : ''}
+                <div id="ticketMessagesContainer" class="max-h-[400px] overflow-y-auto mb-6 px-2">${msgs}</div>
                 ${(t.status === 'NEW' || t.status === 'PENDING_ADMIN') ? `
                     <div class="space-y-3">
-                        <textarea id="messageInput" class="w-full border-2 border-gray-100 rounded-2xl p-4 text-sm focus:border-blue-500 outline-none transition h-32" placeholder="Напишите ответ гостю..."></textarea>
+                        <textarea id="messageInput" oninput="app.messageDraft = this.value" class="w-full border-2 border-gray-100 rounded-2xl p-4 text-sm focus:border-blue-500 outline-none transition h-32" placeholder="Напишите ответ гостю..."></textarea>
                         <div class="flex gap-2">
                             <button onclick="app.handleSendMessage()" class="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Отправить</button>
+                            <button onclick="app.closeDialog(${t.id})" class="bg-slate-600 text-white font-bold px-4 rounded-xl hover:bg-slate-700 transition">🔒 Закрыть диалог</button>
                             <button onclick="app.updateTicketStatus(${t.id}, 'COMPLETED')" class="bg-green-600 text-white font-bold px-6 rounded-xl hover:bg-green-700 transition">✅ Выполнено</button>
                             <button onclick="app.updateTicketStatus(${t.id}, 'DECLINED')" class="bg-red-500 text-white font-bold px-6 rounded-xl hover:bg-red-600 transition">❌ Отклонить</button>
+                        </div>
+                        <div class="border-t pt-4 mt-2">
+                            <div class="font-bold mb-2">Назначить поручение сотруднику</div>
+                            <div class="grid grid-cols-1 gap-2">
+                                <select id="ticketAssignee" class="w-full border p-2 rounded-lg">
+                                    ${this.getStaffOptionsHtml()}
+                                </select>
+                                <select id="ticketTaskType" class="w-full border p-2 rounded-lg">
+                                    <option value="Уборка">Уборка</option>
+                                    <option value="Техническая задача">Техническая задача</option>
+                                    <option value="Доставка">Доставка</option>
+                                    <option value="Прочее">Прочее</option>
+                                </select>
+                                <textarea id="ticketTaskDesc" class="w-full border p-3 rounded-lg text-sm h-20" placeholder="Описание поручения для сотрудника"></textarea>
+                                <button onclick="app.createStaffTaskFromCurrentTicket()" class="bg-purple-600 text-white font-bold py-2 rounded-xl hover:bg-purple-700 transition">Создать поручение</button>
+                            </div>
                         </div>
                     </div>
                 ` : `<div class="text-center p-4 bg-gray-50 rounded-xl text-gray-500 font-bold">Заявка закрыта со статусом: ${t.status}</div>`}
@@ -461,7 +798,11 @@ class AdminApp {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content, admin_telegram_id: adminId, admin_name: adminName })
         });
-        if (r.ok) await this.loadTicketDetail(ticketId);
+        if (r.ok) {
+            this.messageDraft = '';
+            await this.loadTicketDetail(ticketId);
+            await this.loadTickets();
+        }
     }
 
     async updateTicketStatus(id, status) {
@@ -471,12 +812,68 @@ class AdminApp {
         if (r.ok) { await this.loadTicketDetail(id); await this.loadTickets(); await this.loadStatistics(); }
     }
 
+    async closeDialog(id) {
+        const r = await fetch(`${API_BASE}/tickets/${id}/dialog/close`, { method: 'POST' });
+        if (r.ok) {
+            await this.loadTicketDetail(id);
+            await this.loadTickets();
+            await this.loadStatistics();
+        }
+    }
+
     handleSendMessage() {
         const input = document.getElementById('messageInput');
         if (input?.value.trim() && this.currentTicket) {
+            this.messageDraft = '';
             this.sendMessage(this.currentTicket.id, input.value.trim());
             input.value = '';
         }
+    }
+
+    getStaffOptionsHtml() {
+        const activeStaff = (this.staff || []).filter(s => s.is_active);
+        if (!activeStaff.length) {
+            return `<option value="">Нет активных сотрудников</option>`;
+        }
+        return [
+            `<option value="">Выберите ответственного</option>`,
+            ...activeStaff.map(s => `<option value="${s.id}">${this.escapeHtml(s.full_name)}${s.telegram_id ? '' : ' (без Telegram)'}</option>`)
+        ].join('');
+    }
+
+    async createStaffTaskFromCurrentTicket() {
+        if (!this.currentTicket) return;
+        const assignee = document.getElementById('ticketAssignee')?.value || '';
+        const taskType = document.getElementById('ticketTaskType')?.value || 'Прочее';
+        const description = document.getElementById('ticketTaskDesc')?.value?.trim() || '';
+
+        if (!assignee) {
+            alert('Выберите ответственного сотрудника');
+            return;
+        }
+
+        const room = this.currentTicket.room_number || 'Не указан';
+        const payload = {
+            room_number: room,
+            task_type: taskType,
+            description: description || `Поручение по заявке #${this.currentTicket.id}`,
+            assigned_to: assignee,
+        };
+
+        const resp = await fetch(`${API_BASE}/staff/tasks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.detail || 'Не удалось создать поручение');
+            return;
+        }
+
+        await this.loadStaffTasks();
+        alert('Поручение создано и отправлено сотруднику (если у него есть Telegram ID).');
     }
 
     escapeHtml(text) {
@@ -545,6 +942,23 @@ class AdminApp {
                 <div class="flex justify-between items-center">
                     <h2 class="text-2xl font-bold">🍽 Редактор меню</h2>
                     <button onclick="app.editingMenuItem = {category: 'breakfast', category_type: 'breakfast', name: '', price: 0, composition: [], is_available: true}; app.render()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold">+ Добавить блюдо</button>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow border">
+                    <h3 class="text-lg font-bold mb-3">Доступность категорий для гостей</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        ${Object.entries(categories).map(([cat, label]) => `
+                            <button
+                                onclick="app.toggleMenuCategory('${cat}')"
+                                class="p-3 rounded-lg border text-left ${this.menuCategorySettings?.[cat] ? 'bg-green-50 border-green-300' : 'bg-gray-50 border-gray-200'}"
+                            >
+                                <div class="font-semibold">${label}</div>
+                                <div class="text-xs mt-1 ${this.menuCategorySettings?.[cat] ? 'text-green-700' : 'text-gray-500'}">
+                                    ${this.menuCategorySettings?.[cat] ? 'Включено' : 'Выключено'}
+                                </div>
+                            </button>
+                        `).join('')}
+                    </div>
                 </div>
                 
                 ${this.editingMenuItem ? this.renderMenuEditForm() : ''}
@@ -741,6 +1155,125 @@ class AdminApp {
         `;
     }
 
+    renderEventsTab() {
+        return `
+            <div class="space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">🎉 Мероприятия</h2>
+                    <button onclick="app.editingEventItem = {name: '', description: '', location_text: '', map_url: '', image_url: '', starts_at: '', ends_at: '', publish_from: '', publish_until: '', is_active: true}; app.render()" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold">+ Добавить мероприятие</button>
+                </div>
+
+                ${this.editingEventItem ? this.renderEventEditForm() : ''}
+
+                <div class="bg-white p-6 rounded-xl shadow">
+                    <div class="space-y-4">
+                        ${(this.events || []).map((e) => `
+                            <div class="p-4 bg-gray-50 rounded-lg border ${!e.is_active ? 'opacity-60' : ''}">
+                                <div class="flex justify-between items-start gap-3">
+                                    <div class="flex-1">
+                                        <div class="font-bold text-lg">${this.escapeHtml(e.name || '')}</div>
+                                        <div class="text-sm text-gray-600 mt-1">${this.escapeHtml(e.description || '')}</div>
+                                        <div class="text-xs text-gray-500 mt-2">
+                                            Проведение: ${new Date(e.starts_at).toLocaleString('ru-RU')} — ${new Date(e.ends_at).toLocaleString('ru-RU')}
+                                        </div>
+                                        <div class="text-xs text-gray-500 mt-1">
+                                            Показ объявления: ${new Date(e.publish_from || e.starts_at).toLocaleString('ru-RU')} — ${new Date(e.publish_until || e.ends_at).toLocaleString('ru-RU')}
+                                        </div>
+                                        ${e.location_text ? `<div class="text-xs text-gray-500 mt-1">📍 ${this.escapeHtml(e.location_text)}</div>` : ''}
+                                        ${e.map_url ? `<a class="text-xs text-blue-600 mt-1 inline-block" target="_blank" href="${this.escapeHtml(e.map_url)}">Открыть карту</a>` : ''}
+                                    </div>
+                                    <div class="flex gap-2">
+                                        <button onclick="app.editingEventItem = {...app.events.find(x => x.id === ${e.id})}; app.render()" class="bg-blue-100 text-blue-700 px-3 py-1 rounded">✏️</button>
+                                        <button onclick="app.deleteEventItem(${e.id})" class="bg-red-100 text-red-700 px-3 py-1 rounded">🗑</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('') || '<div class="text-gray-400 text-center py-6">Нет мероприятий</div>'}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    renderEventEditForm() {
+        const e = this.editingEventItem || {};
+        const nowLocal = new Date(Date.now() - (new Date().getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+        const startsValue = e.starts_at ? String(e.starts_at).slice(0, 16) : '';
+        const endsValue = e.ends_at ? String(e.ends_at).slice(0, 16) : '';
+        const publishFromValue = e.publish_from ? String(e.publish_from).slice(0, 16) : (e.id ? startsValue : nowLocal);
+        const publishUntilValue = e.publish_until ? String(e.publish_until).slice(0, 16) : endsValue;
+        return `
+            <div class="bg-blue-50 p-6 rounded-xl border-2 border-blue-200 mb-6">
+                <h3 class="text-lg font-bold mb-4">${e.id ? 'Редактировать мероприятие' : 'Новое мероприятие'}</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Название</label>
+                        <input id="eventName" class="w-full border p-2 rounded" value="${this.escapeHtml(e.name || '')}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Место проведения</label>
+                        <input id="eventLocation" class="w-full border p-2 rounded" value="${this.escapeHtml(e.location_text || '')}">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold mb-1">Описание</label>
+                        <textarea id="eventDescription" class="w-full border p-2 rounded h-24">${this.escapeHtml(e.description || '')}</textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Начало проведения</label>
+                        <input id="eventStartsAt" type="datetime-local" class="w-full border p-2 rounded" value="${startsValue}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Окончание проведения</label>
+                        <input id="eventEndsAt" type="datetime-local" class="w-full border p-2 rounded" value="${endsValue}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Показывать объявление с</label>
+                        <input id="eventPublishFrom" type="datetime-local" class="w-full border p-2 rounded" value="${publishFromValue}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Показывать объявление до</label>
+                        <input id="eventPublishUntil" type="datetime-local" class="w-full border p-2 rounded" value="${publishUntilValue}">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1">Ссылка/координаты</label>
+                        <input id="eventMapUrl" class="w-full border p-2 rounded" value="${this.escapeHtml(e.map_url || '')}">
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-bold mb-1">Фото мероприятия (файл)</label>
+                        <div class="flex gap-2">
+                            <input id="eventImageFile" type="file" accept="image/*" class="w-full border p-2 rounded bg-white">
+                            <button type="button" onclick="app.uploadEventImage()" class="bg-blue-600 text-white px-4 rounded">Загрузить</button>
+                        </div>
+                        <input id="eventImageUrl" class="w-full border p-2 rounded mt-2 bg-gray-100" value="${this.escapeHtml(e.image_url || '')}" readonly>
+                        <div class="text-xs text-gray-500 mt-1">После загрузки URL подставится автоматически.</div>
+                    </div>
+                    <div class="md:col-span-2">
+                        <label class="flex items-center gap-2">
+                            <input id="eventIsActive" type="checkbox" ${e.is_active === false ? '' : 'checked'}>
+                            <span>Активно</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="flex gap-2 mt-4">
+                    <button onclick="app.saveEventItem({
+                        id: ${e.id || 'null'},
+                        name: document.getElementById('eventName').value.trim(),
+                        description: document.getElementById('eventDescription').value.trim(),
+                        location_text: document.getElementById('eventLocation').value.trim(),
+                        map_url: document.getElementById('eventMapUrl').value.trim(),
+                        image_url: document.getElementById('eventImageUrl').value.trim(),
+                        starts_at: document.getElementById('eventStartsAt').value,
+                        ends_at: document.getElementById('eventEndsAt').value,
+                        publish_from: document.getElementById('eventPublishFrom').value,
+                        publish_until: document.getElementById('eventPublishUntil').value,
+                        is_active: document.getElementById('eventIsActive').checked
+                    })" class="bg-green-600 text-white px-6 py-2 rounded-lg font-bold">Сохранить</button>
+                    <button onclick="app.editingEventItem = null; app.render()" class="border px-6 py-2 rounded-lg">Отмена</button>
+                </div>
+            </div>
+        `;
+    }
+
     renderStaffManagementTab() {
         const roles = { maid: '🧹 Горничная', technician: '🔧 Тех. специалист', administrator: '👨‍💼 Администратор' };
         return `
@@ -856,8 +1389,8 @@ class AdminApp {
         });
     }
     renderStaffTab() {
-        return `<div class="space-y-4"><div class="flex justify-between items-center"><h2 class="text-2xl font-bold">🛠 Задачи</h2><button onclick="app.showCreateStaffTask()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">+</button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4">${this.staffTasks.map(s => `<div class="bg-white p-4 rounded-xl shadow border-l-4 ${s.status === 'PENDING' ? 'border-red-500' : 'border-green-500'}"><div class="font-bold">#${s.room_number}: ${s.task_type}</div><div class="text-xs text-gray-400">${s.status}</div></div>`).join('')}</div>
-        <div id="taskModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div class="bg-white p-8 rounded-2xl w-full max-w-md shadow-2xl"><h3 class="text-xl font-bold mb-4">Новая задача</h3><div class="space-y-4"><input id="taskRoom" class="w-full border p-3 rounded-xl" placeholder="Номер"><select id="taskType" class="w-full border p-3 rounded-xl"><option value="Уборка">Уборка</option></select><textarea id="taskDesc" class="w-full border p-3 rounded-xl h-24" placeholder="Описание"></textarea><div class="flex gap-2"><button onclick="app.submitStaffTask()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Создать</button><button onclick="app.hideModal()" class="px-6 border py-3 rounded-xl">Отмена</button></div></div></div></div></div>`;
+        return `<div class="space-y-4"><div class="flex justify-between items-center"><h2 class="text-2xl font-bold">🛠 Задачи</h2><button onclick="app.showCreateStaffTask()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">+</button></div><div class="grid grid-cols-1 md:grid-cols-2 gap-4">${this.staffTasks.map(s => `<div class="bg-white p-4 rounded-xl shadow border-l-4 ${s.status === 'PENDING' ? 'border-red-500' : 'border-green-500'}"><div class="flex items-start justify-between gap-3"><div><div class="font-bold">#${s.room_number}: ${s.task_type}</div><div class="text-xs text-gray-500 mt-1">Ответственный: ${this.getAssignedStaffName(s.assigned_to)}</div><div class="text-xs text-gray-400">${s.status}</div></div>${s.status === 'COMPLETED' ? `<button onclick="app.deleteCompletedTask(${s.id})" class="text-red-500 hover:bg-red-50 rounded-full w-7 h-7 flex items-center justify-center" title="Удалить выполненную задачу">✕</button>` : ''}</div></div>`).join('')}</div>
+        <div id="taskModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"><div class="bg-white p-8 rounded-2xl w-full max-w-md shadow-2xl"><h3 class="text-xl font-bold mb-4">Новая задача</h3><div class="space-y-4"><input id="taskRoom" class="w-full border p-3 rounded-xl" placeholder="Номер"><select id="taskType" class="w-full border p-3 rounded-xl"><option value="Уборка">Уборка</option><option value="Техническая задача">Техническая задача</option><option value="Доставка">Доставка</option><option value="Прочее">Прочее</option></select><select id="taskAssignee" class="w-full border p-3 rounded-xl">${this.getStaffOptionsHtml()}</select><div class="grid grid-cols-2 gap-2"><select id="taskNotifyMode" class="w-full border p-3 rounded-xl" onchange="app.toggleTaskTimeInput()"><option value="now">Сейчас</option><option value="at_time">Ко времени (МСК)</option></select><input id="taskNotifyTime" type="time" class="w-full border p-3 rounded-xl" style="display:none" placeholder="HH:MM"></div><textarea id="taskDesc" class="w-full border p-3 rounded-xl h-24" placeholder="Описание"></textarea><div class="flex gap-2"><button onclick="app.submitStaffTask()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold">Создать</button><button onclick="app.hideModal()" class="px-6 border py-3 rounded-xl">Отмена</button></div></div></div></div></div>`;
     }
 
     renderCamerasTab() {
@@ -966,13 +1499,298 @@ class AdminApp {
     }
     showCreateStaffTask() { document.getElementById('taskModal').classList.remove('hidden'); }
     hideModal() { document.getElementById('taskModal').classList.add('hidden'); }
+    toggleTaskTimeInput() {
+        const mode = document.getElementById('taskNotifyMode')?.value || 'now';
+        const timeInput = document.getElementById('taskNotifyTime');
+        if (!timeInput) return;
+        timeInput.style.display = mode === 'at_time' ? 'block' : 'none';
+    }
     async submitStaffTask() {
         const r = document.getElementById('taskRoom').value;
         if (!r) return alert('Укажите номер');
-        await fetch(`${API_BASE}/staff/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_number: r, task_type: document.getElementById('taskType').value, description: document.getElementById('taskDesc').value }) });
+        const assignedTo = document.getElementById('taskAssignee')?.value || null;
+        if (!assignedTo) return alert('Выберите ответственного');
+        const notifyMode = document.getElementById('taskNotifyMode')?.value || 'now';
+        const notifyTimeMsk = document.getElementById('taskNotifyTime')?.value || '';
+        if (notifyMode === 'at_time' && !notifyTimeMsk) return alert('Укажите время по МСК');
+        await fetch(`${API_BASE}/staff/tasks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room_number: r, task_type: document.getElementById('taskType').value, description: document.getElementById('taskDesc').value, assigned_to: assignedTo, notify_mode: notifyMode, notify_time_msk: notifyTimeMsk }) });
         this.hideModal(); this.loadStaffTasks();
     }
+
+    async deleteCompletedTask(taskId) {
+        if (!confirm('Удалить выполненную задачу?')) return;
+        const resp = await fetch(`${API_BASE}/staff/tasks/${taskId}`, { method: 'DELETE' });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            alert(err.detail || 'Не удалось удалить задачу');
+            return;
+        }
+        await this.loadStaffTasks();
+    }
+
+    getAssignedStaffName(assignedTo) {
+        if (!assignedTo) return 'Не назначен';
+        const assignedStr = String(assignedTo);
+        let staff = null;
+        if (/^\d+$/.test(assignedStr)) {
+            staff = (this.staff || []).find(s => String(s.id) === assignedStr);
+        }
+        if (!staff) {
+            staff = (this.staff || []).find(s => s.telegram_id === assignedStr);
+        }
+        return staff ? staff.full_name : assignedStr;
+    }
     renderMarketingTab() { return `<div class="bg-white p-8 rounded-2xl shadow-xl max-w-xl mx-auto"><h2 class="text-2xl font-bold mb-6">📢 Рассылка</h2><textarea id="broadcastText" class="w-full border p-4 rounded-xl h-40" placeholder="Текст..."></textarea><button onclick="alert('Запущено')" class="w-full bg-green-600 text-white font-bold py-4 rounded-xl mt-4">Отправить всем</button></div>`; }
+
+    getContentScenarios() {
+        return [
+            {
+                section: 'До заезда',
+                title: 'Старт и выбор этапа',
+                description: 'Гость получает эти тексты сразу после /start и при возврате в выбор этапа.',
+                textPaths: [
+                    { path: 'greeting.start', label: 'Приветствие' },
+                    { path: 'menus.segment_choice_prompt', label: 'Текст выбора этапа' },
+                ],
+                buttonPaths: [
+                    { path: 'segment_menu[0].label', label: 'Кнопка: Я планирую поездку' },
+                    { path: 'segment_menu[1].label', label: 'Кнопка: Я уже проживаю в отеле' },
+                    { path: 'segment_menu[2].label', label: 'Кнопка: Визуальное меню' },
+                ],
+            },
+            {
+                section: 'До заезда',
+                title: 'Меню до заезда',
+                description: 'Тексты и кнопки, которые видит гость в разделе «Я планирую поездку».',
+                textPaths: [
+                    { path: 'menus.pre_arrival_title', label: 'Заголовок раздела' },
+                    { path: 'pre_arrival.about_hotel', label: 'Сообщение: Об отеле' },
+                    { path: 'pre_arrival.how_to_get', label: 'Сообщение: Как добраться' },
+                    { path: 'pre_arrival.faq', label: 'Сообщение: Вопросы и ответы' },
+                    { path: 'pre_arrival.restaurant', label: 'Сообщение: Ресторан' },
+                ],
+                buttonPaths: [
+                    { path: 'pre_arrival_menu[0].label', label: 'Кнопка: Забронировать номер' },
+                    { path: 'pre_arrival_menu[4].label', label: 'Кнопка: Вопросы и ответы' },
+                    { path: 'pre_arrival_menu[6].label', label: 'Кнопка: Администратор (до заезда)' },
+                ],
+            },
+            {
+                section: 'Во время проживания',
+                title: 'Меню проживающего гостя',
+                description: 'Основной экран и кнопки для гостя, который уже проживает в отеле.',
+                textPaths: [
+                    { path: 'menus.in_house_title', label: 'Заголовок раздела' },
+                    { path: 'in_house.walks_relax', label: 'Сообщение: Прогулки и отдых' },
+                    { path: 'in_house.recommendations', label: 'Сообщение: Рекомендации' },
+                    { path: 'in_house.admin', label: 'Сообщение: Администратор' },
+                ],
+                buttonPaths: [
+                    { path: 'in_house_menu[0].label', label: 'Кнопка: Рум-сервис' },
+                    { path: 'in_house_menu[1].label', label: 'Кнопка: Завтраки' },
+                    { path: 'in_house_menu[3].label', label: 'Кнопка: Погода' },
+                    { path: 'in_house_menu[5].label', label: 'Кнопка: Администратор' },
+                ],
+            },
+            {
+                section: 'Во время проживания',
+                title: 'Рум-сервис',
+                description: 'Подсказки и тексты, которые гость получает в ветках рум-сервиса.',
+                textPaths: [
+                    { path: 'room_service.what_do_you_need', label: 'Текст экрана выбора услуги' },
+                    { path: 'room_service.technical_problem.prompt_category', label: 'Тех. проблема: запрос категории' },
+                    { path: 'room_service.extra_to_room.prompt_item', label: 'Дополнительно в номер: что принести' },
+                    { path: 'room_service.cleaning.prompt_time', label: 'Уборка: выбор времени' },
+                    { path: 'room_service.other.prompt_text', label: 'Другое: запрос текста' },
+                ],
+                buttonPaths: [
+                    { path: 'room_service.branches[0].label', label: 'Кнопка: Технические проблемы' },
+                    { path: 'room_service.branches[1].label', label: 'Кнопка: Дополнительно в номер' },
+                    { path: 'room_service.branches[2].label', label: 'Кнопка: Уборка номера' },
+                    { path: 'room_service.branches[3].label', label: 'Кнопка: Меню подушек' },
+                    { path: 'room_service.branches[4].label', label: 'Кнопка: Другое' },
+                ],
+            },
+            {
+                section: 'Питание',
+                title: 'Завтраки и меню',
+                description: 'Тексты по завтракам и оформлению заказа.',
+                textPaths: [
+                    { path: 'breakfast.intro', label: 'Текст: старт завтрака' },
+                    { path: 'breakfast.too_late', label: 'Текст: заказ недоступен по времени' },
+                    { path: 'breakfast.composition', label: 'Текст: состав завтрака' },
+                    { path: 'menu.category_prompt', label: 'Текст: выбор категории меню' },
+                    { path: 'menu.order_confirmed', label: 'Текст: подтверждение заказа' },
+                ],
+                buttonPaths: [
+                    { path: 'breakfast.entry_menu[0].label', label: 'Кнопка: Заказать завтрак' },
+                    { path: 'breakfast.entry_menu[1].label', label: 'Кнопка: Состав завтрака' },
+                    { path: 'breakfast.confirm_menu[0].label', label: 'Кнопка: Подтвердить заказ' },
+                    { path: 'breakfast.confirm_menu[1].label', label: 'Кнопка: Отменить' },
+                ],
+            },
+            {
+                section: 'Система',
+                title: 'Служебные уведомления',
+                description: 'Тексты системных и сервисных уведомлений.',
+                textPaths: [
+                    { path: 'tickets.created_confirmation', label: 'Текст: подтверждение заявки' },
+                    { path: 'tickets.resolved', label: 'Текст: заявка решена' },
+                    { path: 'tickets.declined', label: 'Текст: заявка отклонена' },
+                    { path: 'system.not_authorized', label: 'Текст: нет доступа' },
+                    { path: 'system.content_reloaded', label: 'Текст: контент обновлён' },
+                ],
+                buttonPaths: [],
+            },
+        ];
+    }
+
+    getValueByPath(obj, path) {
+        if (!obj || !path) return '';
+        const parts = path.split('.');
+        let cur = obj;
+        for (const p of parts) {
+            if (cur == null || typeof cur !== 'object' || !(p in cur)) return '';
+            cur = cur[p];
+        }
+        return typeof cur === 'string' ? cur : '';
+    }
+
+    getButtonLabelByPath(path) {
+        const item = (this.buttonLabels || []).find((b) => b.path === path);
+        return item?.label || '';
+    }
+
+    renderScenarioTextField(item) {
+        const value = this.getValueByPath(this.textsJson, item.path);
+        return `
+            <div class="bg-gray-50 border rounded-lg p-3 space-y-2">
+                <div class="text-xs font-semibold text-gray-700">${this.escapeHtml(item.label)}</div>
+                <div class="text-[10px] text-gray-400 font-mono">${this.escapeHtml(item.path)}</div>
+                <textarea
+                    class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-green-500 outline-none h-24"
+                    onchange="app.updateTextByPath('${this.escapeHtml(item.path)}', this.value)"
+                >${this.escapeHtml(value)}</textarea>
+            </div>
+        `;
+    }
+
+    renderScenarioButtonField(item) {
+        const value = this.getButtonLabelByPath(item.path);
+        return `
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-2">
+                <div class="text-xs font-semibold text-blue-900">${this.escapeHtml(item.label)}</div>
+                <div class="text-[10px] text-blue-400 font-mono">${this.escapeHtml(item.path)}</div>
+                <input
+                    class="button-label-input w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                    data-path="${this.escapeHtml(item.path)}"
+                    value="${this.escapeHtml(value)}"
+                    placeholder="Название кнопки..."
+                />
+            </div>
+        `;
+    }
+
+    renderContentEditorTab() {
+        const scenarios = this.getContentScenarios();
+        const groupedScenarios = {};
+        scenarios.forEach((s) => {
+            if (!groupedScenarios[s.section]) groupedScenarios[s.section] = [];
+            groupedScenarios[s.section].push(s);
+        });
+
+        return `
+            <div class="space-y-8">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">📝 Контент по сценарию гостя</h2>
+                    <div class="flex gap-2">
+                        <button onclick="Promise.all([app.loadMenusYaml(), app.loadMenusJson(), app.loadTextsYaml(), app.loadTextsJson(), app.loadButtonLabels()]).then(() => app.render())" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold">🔄 Обновить всё</button>
+                    </div>
+                </div>
+
+                <div class="bg-green-50 border border-green-200 p-4 rounded-xl text-sm text-green-900">
+                    Здесь всё разбито по реальным сценариям гостя: <b>когда</b> бот отправляет сообщение и <b>какие кнопки</b> в этот момент видит гость.
+                    Вы редактируете только тексты и подписи кнопок, логика бота не меняется.
+                </div>
+
+                ${Object.entries(groupedScenarios).map(([section, sectionScenarios]) => `
+                    <section class="space-y-4">
+                        <div class="flex items-center gap-2 border-b-2 border-gray-300 pb-2">
+                            <h3 class="text-xl font-bold">${this.escapeHtml(section)}</h3>
+                        </div>
+                        <div class="space-y-4">
+                            ${sectionScenarios.map((scenario) => `
+                                <div class="bg-white p-4 rounded-xl shadow border">
+                                    <div class="mb-3">
+                                        <h4 class="font-bold text-lg">${this.escapeHtml(scenario.title)}</h4>
+                                        <div class="text-sm text-gray-600">${this.escapeHtml(scenario.description)}</div>
+                                    </div>
+                                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                        <div class="space-y-3">
+                                            <div class="text-xs uppercase tracking-wider text-green-700 font-bold">Сообщения бота</div>
+                                            ${scenario.textPaths.map((item) => this.renderScenarioTextField(item)).join('')}
+                                        </div>
+                                        <div class="space-y-3">
+                                            <div class="text-xs uppercase tracking-wider text-blue-700 font-bold">Кнопки на экране</div>
+                                            ${scenario.buttonPaths.length
+                                                ? scenario.buttonPaths.map((item) => this.renderScenarioButtonField(item)).join('')
+                                                : '<div class="text-sm text-gray-400">В этом сценарии кнопки не редактируются</div>'}
+                                        </div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </section>
+                `).join('')}
+
+                <div class="flex justify-end">
+                    <button onclick="app.saveButtonLabels()" class="bg-green-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg hover:bg-green-700 transition">Сохранить все названия кнопок</button>
+                </div>
+                ${this.buttonLabelsStatus ? `<div class="text-center text-sm font-bold text-green-600">${this.escapeHtml(this.buttonLabelsStatus)}</div>` : ''}
+
+                <!-- Расширенный редактор (YAML) -->
+                <section class="space-y-4 pt-8 border-t">
+                    <h3 class="text-lg font-bold text-gray-500">🛠 Расширенный редактор (YAML)</h3>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div class="bg-white p-4 rounded-xl shadow border">
+                            <label class="block text-sm font-bold mb-2 text-blue-800">menus.ru.yml (Структура меню)</label>
+                            <textarea id="menusYamlEditor" class="w-full border rounded-lg p-3 font-mono text-[10px] h-[400px] leading-tight focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50">${this.escapeHtml(this.menusYamlContent || '')}</textarea>
+                            <div class="flex gap-2 mt-3">
+                                <button onclick="app.saveMenusYaml()" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Сохранить структуру</button>
+                            </div>
+                            ${this.menusYamlStatus ? `<div class="mt-2 text-xs font-bold text-blue-600">${this.escapeHtml(this.menusYamlStatus)}</div>` : ''}
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow border">
+                            <label class="block text-sm font-bold mb-2 text-green-800">texts.ru.yml (Все тексты)</label>
+                            <textarea id="textsYamlEditor" class="w-full border rounded-lg p-3 font-mono text-[10px] h-[400px] leading-tight focus:ring-2 focus:ring-green-500 outline-none bg-gray-50">${this.escapeHtml(this.textsYamlContent || '')}</textarea>
+                            <div class="flex gap-2 mt-3">
+                                <button onclick="app.saveTextsYaml()" class="bg-green-600 text-white px-4 py-2 rounded-lg font-bold text-sm">Сохранить тексты</button>
+                            </div>
+                            ${this.textsYamlStatus ? `<div class="mt-2 text-xs font-bold text-green-600">${this.escapeHtml(this.textsYamlStatus)}</div>` : ''}
+                        </div>
+                    </div>
+                </section>
+            </div>
+        `;
+    }
+
+    async updateTextByPath(path, newValue) {
+        try {
+            const resp = await fetch(`${API_BASE}/content/texts-ru/json`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path, value: newValue }),
+            });
+            if (resp.ok) {
+                this.textsYamlStatus = 'Текст сохранён';
+                await this.loadTextsYaml();
+                await this.loadTextsJson();
+                this.render();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }
 
     renderGuestLayout() {
         return `

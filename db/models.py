@@ -70,6 +70,7 @@ class Ticket(Base):
     dialog_open: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     dialog_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     dialog_last_activity_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    admin_last_viewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # для сброса "непрочитанных"
 
     messages: Mapped[list["TicketMessage"]] = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
 
@@ -101,7 +102,7 @@ class User(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     telegram_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     loyalty_points: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -207,12 +208,23 @@ class GuestBooking(Base):
     room_number: Mapped[str] = mapped_column(String(32), nullable=False)
     check_in_date: Mapped[date] = mapped_column(Date, nullable=False)
     check_out_date: Mapped[date] = mapped_column(Date, nullable=False)
+    shelter_reservation_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     checkin_notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
     checkout_notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    feedback_requested: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, server_default="0")
+    feedback_requested_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     cleaning_requests: Mapped[list["CleaningRequest"]] = relationship("CleaningRequest", back_populates="guest_booking")
+
+
+class ShelterSyncState(Base):
+    __tablename__ = "shelter_sync_state"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class CleaningRequestStatus(str, Enum):
