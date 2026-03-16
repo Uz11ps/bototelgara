@@ -17,7 +17,7 @@ async def show_guide_categories(callback: CallbackQuery):
     try:
         await callback.message.edit_text("🗺 Гид по Сортавала и Карелии\nВыберите категорию:", reply_markup=keyboard)
     except Exception:
-        pass  # Ignore if message unchanged
+        await callback.message.answer("🗺 Гид по Сортавала и Карелии\nВыберите категорию:", reply_markup=keyboard)
 
 @router.callback_query(F.data.startswith("guide_cat_"))
 async def show_guide_items(callback: CallbackQuery):
@@ -43,4 +43,4 @@ async def show_guide_items(callback: CallbackQuery):
     try:
         await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")
     except Exception:
-        pass  # Ignore if message unchanged
+        await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons), parse_mode="HTML")

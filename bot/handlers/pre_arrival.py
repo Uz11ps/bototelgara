@@ -164,7 +164,7 @@ async def _handle_pre_faq_logic(message: Message):
     # Кнопка открывает в браузере; на iOS/Android якорь #faq иногда не срабатывает —
     # на сайте нужно id="faq" у секции «Ответы на частые вопросы»
     faq_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📄 Открыть FAQ на сайте", url="https://gora-hotel.ru/#faq")],
+        [InlineKeyboardButton(text="📄 Открыть FAQ на сайте", url="https://gora-hotel.ru/#i7jd88-accordion-label")],
     ])
     await message.answer(
         "❓ <b>Ответы на частые вопросы</b>\n\n"

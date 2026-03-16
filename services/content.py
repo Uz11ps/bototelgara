@@ -19,13 +19,40 @@ class ContentManager:
         self._base_path = base_path
         self._texts: dict[str, Any] | None = None
         self._menus: dict[str, Any] | None = None
+        self._texts_mtime: float | None = None
+        self._menus_mtime: float | None = None
 
     def load(self) -> None:
+        texts_path = self._base_path / "texts.ru.yml"
+        menus_path = self._base_path / "menus.ru.yml"
         self._texts = self._load_yaml("texts.ru.yml")
         self._menus = self._load_yaml("menus.ru.yml")
+        self._texts_mtime = texts_path.stat().st_mtime if texts_path.exists() else None
+        self._menus_mtime = menus_path.stat().st_mtime if menus_path.exists() else None
 
     def reload(self) -> None:
         self.load()
+
+    def _ensure_fresh(self) -> None:
+        texts_path = self._base_path / "texts.ru.yml"
+        menus_path = self._base_path / "menus.ru.yml"
+
+        try:
+            current_texts_mtime = texts_path.stat().st_mtime
+        except FileNotFoundError:
+            current_texts_mtime = None
+        try:
+            current_menus_mtime = menus_path.stat().st_mtime
+        except FileNotFoundError:
+            current_menus_mtime = None
+
+        if (
+            self._texts is None
+            or self._menus is None
+            or current_texts_mtime != self._texts_mtime
+            or current_menus_mtime != self._menus_mtime
+        ):
+            self.load()
 
     def _load_yaml(self, filename: str) -> dict[str, Any]:
         path = self._base_path / filename
@@ -36,8 +63,7 @@ class ContentManager:
         return data
 
     def get_text(self, key: str) -> str:
-        if self._texts is None:
-            self.load()
+        self._ensure_fresh()
         assert self._texts is not None
         value = self._get_nested(self._texts, key)
         if not isinstance(value, str):
@@ -45,8 +71,7 @@ class ContentManager:
         return value
 
     def get_menu(self, key: str) -> list[dict[str, Any]]:
-        if self._menus is None:
-            self.load()
+        self._ensure_fresh()
         assert self._menus is not None
         value = self._get_nested(self._menus, key)
         if not isinstance(value, list):

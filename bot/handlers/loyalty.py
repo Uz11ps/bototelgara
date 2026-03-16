@@ -36,4 +36,4 @@ async def show_loyalty(callback: CallbackQuery):
     try:
         await callback.message.edit_text(text, reply_markup=keyboard, parse_mode="HTML")
     except Exception:
-        pass  # Ignore if message unchanged
+        await callback.message.answer(text, reply_markup=keyboard, parse_mode="HTML")

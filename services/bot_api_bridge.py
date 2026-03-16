@@ -214,6 +214,7 @@ class BotAPIBridge:
                             for msg in messages:
                                 message_id = msg.get("message_id")
                                 guest_chat_id = msg.get("guest_chat_id")
+                                sender = str(msg.get("sender") or "ADMIN")
                                 
                                 if not guest_chat_id or not str(guest_chat_id).isdigit():
                                     # Mark as delivered so it doesn't retry
@@ -224,20 +225,23 @@ class BotAPIBridge:
                                     continue
                                 
                                 try:
-                                    admin_name = msg.get("admin_name", "Администратор")
                                     ticket_id = msg.get("ticket_id")
-                                    message_text = (
-                                        f"\U0001f4ac Ответ от {admin_name} по заявке #{ticket_id}:\n\n"
-                                        f"{msg['content']}"
-                                    )
+                                    if sender == "SYSTEM":
+                                        message_text = str(msg.get("content") or "")
+                                    else:
+                                        admin_name = msg.get("admin_name", "Администратор")
+                                        message_text = (
+                                            f"\U0001f4ac Ответ от {admin_name} по заявке #{ticket_id}:\n\n"
+                                            f"{msg['content']}"
+                                        )
                                     
                                     await self.bot.send_message(
                                         chat_id=int(guest_chat_id),
                                         text=message_text
                                     )
                                     logger.info(
-                                        f"Delivered admin message {message_id} "
-                                        f"from {admin_name} to user {guest_chat_id}"
+                                        f"Delivered {sender.lower()} message {message_id} "
+                                        f"to user {guest_chat_id}"
                                     )
                                     
                                     # Mark as delivered in DB

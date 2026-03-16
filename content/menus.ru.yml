@@ -115,7 +115,6 @@ reply_keyboards:
         web_app: "https://gora.ru.net/menu"
     - - label: "📞 Администратор"
     - - label: "↩️ Назад"
-      - label: "👷‍♂️ Сотрудникам"
   pre_arrival:
     - - label: "🏨 Забронировать номер"
     - - label: "🌲 Об отеле"
@@ -125,7 +124,6 @@ reply_keyboards:
     - - label: "🍽 Ресторан"
       - label: "📞 Администратор (до заезда)"
     - - label: "🏠 Главное меню"
-      - label: "👷‍♂️ Сотрудникам"
   menu:
     - - label: "📱 Визуальное меню"
         web_app: "https://gora.ru.net/menu"

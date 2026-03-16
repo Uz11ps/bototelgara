@@ -7,7 +7,7 @@ from aiogram.types import Message, ContentType
 from aiogram.fsm.context import FSMContext
 
 from db.models import TicketType
-from services.tickets import create_ticket, TicketRateLimitExceededError
+from services.tickets import create_ticket, TicketRateLimitExceededError, mark_order_guest_notified
 from services.admins import notify_admins_about_ticket
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,8 @@ async def process_web_app_order(message: Message, data: dict) -> None:
 
     # Notify User
     await message.answer(f"✅ <b>Заказ #{ticket.id} принят!</b>\n\n{summary}\n\nС вами свяжется администратор.", parse_mode="HTML")
-    
+    mark_order_guest_notified(ticket.id)
+
     # Notify Admins
     bot: Bot = message.bot
     await notify_admins_about_ticket(bot, ticket, summary)

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import logging
 from typing import Any
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from db.models import AdminUser, Ticket, TicketMessage, TicketMessageSender, TicketStatus, TicketType
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 RATE_LIMIT_MAX_TICKETS = 3
 RATE_LIMIT_WINDOW_SECONDS = 60
+DIALOG_TIMEOUT_SECONDS_DEFAULT = 3600
 
 
 class TicketRateLimitExceededError(Exception):
@@ -29,6 +31,8 @@ def create_ticket(
     payload: dict[str, Any] | None,
     initial_message: str,
     rate_limit: bool = True,
+    dialog_open: bool = False,
+    dialog_timeout_seconds: int | None = None,
 ) -> Ticket:
     """Create a ticket and an initial guest message.
 
@@ -67,6 +71,13 @@ def create_ticket(
             room_number=room_number,
             payload=payload,
             request_id=request_id,
+            dialog_open=dialog_open,
+            dialog_expires_at=(
+                datetime.utcnow() + timedelta(seconds=(dialog_timeout_seconds or DIALOG_TIMEOUT_SECONDS_DEFAULT))
+                if dialog_open
+                else None
+            ),
+            dialog_last_activity_at=datetime.utcnow() if dialog_open else None,
         )
         session.add(ticket)
         session.flush()
@@ -82,6 +93,95 @@ def create_ticket(
         session.refresh(ticket)
         logger.info("Created ticket id=%s type=%s request_id=%s", ticket.id, ticket.type, ticket.request_id)
         return ticket
+
+
+def get_open_dialog_ticket_for_guest(session: Session, guest_chat_id: str) -> Ticket | None:
+    now = datetime.utcnow()
+    return (
+        session.query(Ticket)
+        .filter(
+            Ticket.guest_chat_id == guest_chat_id,
+            Ticket.dialog_open == True,
+            Ticket.status.in_([TicketStatus.NEW, TicketStatus.PENDING_ADMIN]),
+            or_(Ticket.dialog_expires_at.is_(None), Ticket.dialog_expires_at > now),
+        )
+        .order_by(Ticket.updated_at.desc())
+        .first()
+    )
+
+
+def append_guest_message_to_ticket(
+    *,
+    ticket_id: int,
+    content: str,
+    dialog_timeout_seconds: int = DIALOG_TIMEOUT_SECONDS_DEFAULT,
+) -> Ticket | None:
+    with SessionLocal() as session:
+        ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            return None
+        message = TicketMessage(
+            ticket_id=ticket.id,
+            sender=TicketMessageSender.GUEST,
+            content=content,
+            request_id=ticket.request_id,
+        )
+        session.add(message)
+        ticket.updated_at = datetime.utcnow()
+        if ticket.dialog_open:
+            ticket.dialog_last_activity_at = datetime.utcnow()
+            ticket.dialog_expires_at = datetime.utcnow() + timedelta(seconds=dialog_timeout_seconds)
+        session.commit()
+        session.refresh(ticket)
+        return ticket
+
+
+def mark_order_guest_notified(ticket_id: int) -> bool:
+    """Пометить заказ как уведомлённый, чтобы bridge не слал дубликат."""
+    with SessionLocal() as session:
+        ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket or ticket.type != TicketType.MENU_ORDER:
+            return False
+        payload = dict(ticket.payload or {})
+        payload["guest_notified"] = True
+        ticket.payload = payload
+        ticket.updated_at = datetime.utcnow()
+        session.commit()
+        return True
+
+
+def close_dialog_ticket(ticket_id: int) -> bool:
+    with SessionLocal() as session:
+        ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
+        if not ticket:
+            return False
+        ticket.dialog_open = False
+        ticket.dialog_expires_at = None
+        ticket.updated_at = datetime.utcnow()
+        session.commit()
+        return True
+
+
+def close_expired_open_dialogs() -> int:
+    now = datetime.utcnow()
+    with SessionLocal() as session:
+        expired = (
+            session.query(Ticket)
+            .filter(
+                Ticket.dialog_open == True,
+                Ticket.dialog_expires_at.is_not(None),
+                Ticket.dialog_expires_at <= now,
+            )
+            .all()
+        )
+        if not expired:
+            return 0
+        for ticket in expired:
+            ticket.dialog_open = False
+            ticket.dialog_expires_at = None
+            ticket.updated_at = now
+        session.commit()
+        return len(expired)
 
 
 def list_active_admins(session: Session) -> list[AdminUser]:
@@ -118,6 +218,9 @@ def update_ticket_status(session: Session, ticket_id: int, new_status: TicketSta
     ticket = session.query(Ticket).filter(Ticket.id == ticket_id).first()
     if ticket:
         ticket.status = new_status
+        if new_status in {TicketStatus.COMPLETED, TicketStatus.DECLINED, TicketStatus.CANCELLED}:
+            ticket.dialog_open = False
+            ticket.dialog_expires_at = None
         ticket.updated_at = datetime.utcnow()
         session.commit()
         return True

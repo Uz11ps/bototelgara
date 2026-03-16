@@ -407,7 +407,7 @@ def build_in_house_reply_keyboard() -> ReplyKeyboardMarkup:
         [{"label": "📷 Камеры", "web_app": "https://gora.ru.net/menu?tab=cameras"}],
         [{"label": "📱 Визуальное меню", "web_app": "https://gora.ru.net/menu"}],
         [{"label": "📞 Администратор"}],
-        [{"label": "↩️ Назад"}, {"label": "👷‍♂️ Сотрудникам"}],
+        [{"label": "↩️ Назад"}],
     ]
     return _build_reply_keyboard_from_menu_key(
         "reply_keyboards.in_house",
@@ -423,7 +423,7 @@ def build_pre_arrival_reply_keyboard() -> ReplyKeyboardMarkup:
         [{"label": "🌲 Об отеле"}, {"label": "🎉 Мероприятия"}],
         [{"label": "📍 Как добраться"}, {"label": "❓ Вопросы"}],
         [{"label": "🍽 Ресторан"}, {"label": "📞 Администратор (до заезда)"}],
-        [{"label": "🏠 Главное меню"}, {"label": "👷‍♂️ Сотрудникам"}],
+        [{"label": "🏠 Главное меню"}],
     ]
     return _build_reply_keyboard_from_menu_key(
         "reply_keyboards.pre_arrival",

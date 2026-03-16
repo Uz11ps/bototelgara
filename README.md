@@ -113,7 +113,6 @@ LOG_LEVEL="INFO"
 4. Navigation:
    - **Pre-arrival menu** (all items and texts from YAML):
      - 🏨 Забронировать номер
-     - 🛏 Номера и цены
      - 🌲 Об отеле
      - 🎉 Мероприятия и банкеты
      - 📍 Как добраться

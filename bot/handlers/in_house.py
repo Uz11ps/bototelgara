@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 from datetime import datetime, time
 
 from aiogram import Router, F
@@ -15,10 +16,23 @@ from bot.keyboards.main_menu import (
     build_contact_admin_type_menu,
 )
 from bot.states import FlowState
+from bot.navigation import VIEW_ROOM_SERVICE, nav_push
 from services.content import content_manager
+from services.guest_context import get_active_room_number
 
 
 router = Router()
+
+BREAKFAST_START_HOUR = 9
+BREAKFAST_CUTOFF_HOUR = 17
+BREAKFAST_CUTOFF_MINUTE = 45
+
+
+def is_breakfast_order_available() -> bool:
+    now = datetime.now().time()
+    start = time(BREAKFAST_START_HOUR, 0)
+    cutoff = time(BREAKFAST_CUTOFF_HOUR, BREAKFAST_CUTOFF_MINUTE)
+    return start <= now <= cutoff
 
 
 @router.callback_query(F.data == "back_to_in_house")
@@ -44,24 +58,11 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
     key = callback.data or ""
 
     if key == "in_room_service":
-        await state.set_state(FlowState.room_service_choosing_branch)
-        text = content_manager.get_text("room_service.what_do_you_need")
-        from bot.keyboards.main_menu import build_room_service_reply_keyboard
-        await callback.message.answer(text, reply_markup=build_room_service_menu())
-        # Обновляем slash-меню
-        await callback.message.answer(
-            "Используйте кнопки ниже для выбора:",
-            reply_markup=build_room_service_reply_keyboard()
-        )
+        await _handle_in_room_service_logic(callback.message, state, str(callback.from_user.id))
         return
 
     if key == "in_restaurant":
-        # Handled by menu_order router, but update keyboard here
-        from bot.keyboards.main_menu import build_menu_reply_keyboard
-        await callback.message.answer(
-            "Используйте кнопки ниже для выбора категории:",
-            reply_markup=build_menu_reply_keyboard()
-        )
+        await _handle_in_restaurant_logic(callback.message)
         return
 
     if key == "in_additional_services":
@@ -69,17 +70,8 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
         return
 
     if key == "in_admin":
-        await state.set_state(FlowState.contact_admin_type)
-        from bot.keyboards.main_menu import build_admin_contact_reply_keyboard
-        await callback.message.answer(
-            "Выберите, кто вы:",
-            reply_markup=build_contact_admin_type_menu()
-        )
-        # Обновляем slash-меню
-        await callback.message.answer(
-            "Используйте кнопки ниже для выбора:",
-            reply_markup=build_admin_contact_reply_keyboard()
-        )
+        from bot.handlers.pre_arrival import _handle_pre_contact_admin_logic
+        await _handle_pre_contact_admin_logic(callback.message, state)
         return
 
     if key == "in_guide":
@@ -108,9 +100,114 @@ async def handle_in_house_menu(callback: CallbackQuery, state: FSMContext) -> No
         await callback.answer()
         return
 
+    await _handle_in_house_text_key_logic(callback.message, text_key)
+
+
+async def _handle_in_room_service_logic(message: Message, state: FSMContext, telegram_id: str):
+    room_number = get_active_room_number(telegram_id)
+
+    if not room_number:
+        from bot.keyboards.main_menu import build_guest_booking_keyboard
+        await message.answer(
+            "🛎 Рум-сервис доступен только проживающим гостям.\n\nПожалуйста, укажите данные вашего проживания:",
+            reply_markup=build_guest_booking_keyboard()
+        )
+        return
+
+    await state.set_state(FlowState.room_service_choosing_branch)
+    await nav_push(state, VIEW_ROOM_SERVICE)
+    await state.update_data(room_number=room_number)
+    text = content_manager.get_text("room_service.what_do_you_need")
+    from bot.keyboards.main_menu import build_room_service_reply_keyboard, build_room_service_menu
+    await message.answer(text, reply_markup=build_room_service_menu())
+    # Обновляем slash-меню
+    await message.answer(
+        "Используйте кнопки ниже для выбора:",
+        reply_markup=build_room_service_reply_keyboard()
+    )
+
+
+async def _handle_in_restaurant_logic(message: Message):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
+    from bot.keyboards.main_menu import build_menu_reply_keyboard
+    visual_menu_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📱 Открыть визуальное меню",
+                    web_app=WebAppInfo(url="https://gora.ru.net/menu"),
+                )
+            ]
+        ]
+    )
+    await message.answer(_build_breakfast_composition_from_menu(), parse_mode="HTML")
+    await message.answer(
+        "Заказ доступен через визуальное меню.",
+        reply_markup=visual_menu_kb,
+    )
+    await message.answer(
+        "Используйте кнопки ниже для навигации:",
+        reply_markup=build_menu_reply_keyboard()
+    )
+
+
+def _build_breakfast_composition_from_menu() -> str:
+    from db.models import MenuItem, MenuCategory
+    from db.session import SessionLocal
+
+    with SessionLocal() as db:
+        items = db.query(MenuItem).filter(
+            MenuItem.is_available == True,
+            (MenuItem.category == "breakfast") | (MenuItem.category_type == MenuCategory.BREAKFAST),
+        ).order_by(MenuItem.id.asc()).all()
+
+    if not items:
+        return content_manager.get_text("breakfast.composition")
+
+    lines: list[str] = ["🍳 <b>Актуальный состав завтраков</b>"]
+    for item in items:
+        name = html.escape(item.name or "")
+        price = int(item.price) if item.price is not None else 0
+        lines.append(f"\n• <b>{name}</b> — {price}₽")
+        if item.description:
+            lines.append(f"  {html.escape(item.description)}")
+        composition_line = _format_item_composition(item.composition)
+        if composition_line:
+            lines.append(f"  <i>Состав:</i> {composition_line}")
+    lines.append("\nЗаказ доступен через визуальное меню ниже.")
+    return "\n".join(lines)
+
+
+def _format_item_composition(composition: object) -> str:
+    if isinstance(composition, list):
+        parts: list[str] = []
+        for comp in composition:
+            if isinstance(comp, dict):
+                comp_name = html.escape(str(comp.get("name", "")).strip())
+                if not comp_name:
+                    continue
+                quantity = str(comp.get("quantity", "")).strip()
+                unit = html.escape(str(comp.get("unit", "")).strip())
+                if quantity and unit:
+                    parts.append(f"{comp_name} ({quantity} {unit})")
+                elif quantity:
+                    parts.append(f"{comp_name} ({quantity})")
+                else:
+                    parts.append(comp_name)
+            elif isinstance(comp, str):
+                value = html.escape(comp.strip())
+                if value:
+                    parts.append(value)
+        return ", ".join(parts)
+    if isinstance(composition, str):
+        return html.escape(composition.strip())
+    return ""
+
+
+async def _handle_in_house_text_key_logic(message: Message, text_key: str):
     text = content_manager.get_text(text_key)
-    await callback.message.answer(text)
-    await callback.message.answer(
+    await message.answer(text)
+    await message.answer(
         content_manager.get_text("menus.in_house_title"),
         reply_markup=build_in_house_menu(),
     )
@@ -131,6 +228,13 @@ async def handle_breakfast_entry(callback: CallbackQuery, state: FSMContext) -> 
         return
 
     if key == "breakfast_order":
+        if not is_breakfast_order_available():
+            await state.set_state(FlowState.breakfast_after_deadline_choice)
+            await callback.message.answer(
+                content_manager.get_text("breakfast.too_late"),
+                reply_markup=build_breakfast_after_deadline_menu(),
+            )
+            return
         await state.set_state(FlowState.breakfast_persons)
         await callback.message.answer(content_manager.get_text("breakfast.ask_persons"))
 
@@ -253,10 +357,10 @@ async def handle_contact_admin_type(callback: CallbackQuery, state: FSMContext) 
     key = callback.data or ""
     
     if key == "contact_admin_guest":
-        user_type = "Поселенец"
+        user_type = "Гость"
         await state.update_data(contact_admin_type="guest")
     elif key == "contact_admin_interested":
-        user_type = "Заинтересованный человек"
+        user_type = "Ищу отель"
         await state.update_data(contact_admin_type="interested")
     else:
         return
@@ -277,7 +381,8 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
     data = await state.get_data()
     user_type = data.get("contact_admin_type", "guest")
     
-    user_type_label = "Поселенец" if user_type == "guest" else "Заинтересованный человек"
+    user_type_label = "Гость" if user_type == "guest" else "Ищу отель"
+    room_number = get_active_room_number(str(message.from_user.id))
     
     payload = {
         "branch": "contact_admin",
@@ -292,7 +397,7 @@ async def handle_contact_admin_message(message: Message, state: FSMContext) -> N
             type_=TicketType.OTHER,
             guest_chat_id=str(message.from_user.id),
             guest_name=message.from_user.full_name,
-            room_number=None,
+            room_number=room_number,
             payload=payload,
             initial_message=summary,
         )
@@ -349,13 +454,14 @@ async def handle_breakfast_after_deadline(callback: CallbackQuery, state: FSMCon
 
     summary_template = content_manager.get_text("breakfast.after_deadline_ticket_summary")
     summary = summary_template.format()
+    room_number = get_active_room_number(str(callback.from_user.id))
 
     try:
         ticket = create_ticket(
             type_=TicketType.ROOM_SERVICE,
             guest_chat_id=str(callback.from_user.id),
             guest_name=callback.from_user.full_name,
-            room_number=None,
+            room_number=room_number,
             payload=payload,
             initial_message=summary,
         )

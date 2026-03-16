@@ -16,6 +16,7 @@ from bot.middleware import ThrottlingMiddleware, CallbackAnswerMiddleware
 from bot.handlers.cleaning_schedule import set_bot_instance, cleaning_scheduler_loop
 from services.bot_api_bridge import get_bot_bridge
 from services.guest_notifications import guest_notification_loop
+from services.shelter_sync import shelter_sync_loop
 from services.tickets import close_expired_open_dialogs
 
 
@@ -61,6 +62,7 @@ async def main() -> None:
     # Start cleaning scheduler in background
     asyncio.create_task(cleaning_scheduler_loop())
     asyncio.create_task(guest_notification_loop(bot))
+    asyncio.create_task(shelter_sync_loop(bot, interval_seconds=settings.shelter_sync_interval))
     asyncio.create_task(open_dialog_expiry_loop())
     
     # Set Menu Button for Mini App

@@ -1,8 +1,11 @@
+import logging
+
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, ReplyKeyboardRemove
 from aiogram.fsm.context import FSMContext
 from datetime import datetime, timedelta
-from db.models import Ticket, TicketType, GuestBooking
+from config import get_settings
+from db.models import Ticket, TicketType, GuestBooking, User
 from db.session import SessionLocal
 from services.tickets import create_ticket
 from services.admins import notify_admins_about_ticket
@@ -11,12 +14,14 @@ from services.guest_context import (
     get_active_guest_booking,
     get_local_today,
 )
+from services.shelter_sync import sync_reservations_once
 from bot.navigation import VIEW_IN_HOUSE, VIEW_PRE_ARRIVAL, VIEW_SEGMENT, nav_reset
 from bot.states import FlowState
 from services.content import content_manager
 
 router = Router()
 MAX_MANUAL_PAST_STAY_DAYS = 30
+logger = logging.getLogger(__name__)
 
 
 def deactivate_expired_guest_bookings() -> int:
@@ -26,6 +31,30 @@ def deactivate_expired_guest_bookings() -> int:
 def get_or_create_guest_booking(telegram_id: str) -> GuestBooking | None:
     """Backward-compatible alias for active guest booking lookup."""
     return get_active_guest_booking(telegram_id)
+
+
+async def _sync_guest_booking_if_needed(telegram_id: str) -> None:
+    settings = get_settings()
+    if not settings.shelter_pms_token:
+        return
+
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.telegram_id == telegram_id).first()
+        has_phone = bool(user and (user.phone or "").strip())
+
+    if not has_phone:
+        return
+
+    try:
+        await sync_reservations_once()
+    except Exception as exc:  # pragma: no cover
+        logger.warning("Failed to refresh guest booking for %s: %s", telegram_id, exc)
+
+
+async def _start_guest_booking_flow(message: Message, state: FSMContext) -> None:
+    await state.set_state(FlowState.guest_room_number)
+    text = content_manager.get_text("guest_booking.room_prompt")
+    await message.answer(text)
 
 @router.callback_query(F.data == "segment_pre_arrival")
 async def welcome_pre_arrival(callback: CallbackQuery, state: FSMContext):
@@ -59,6 +88,7 @@ async def welcome_in_house_text(message: Message, state: FSMContext):
 
 
 async def _handle_in_house_logic(message: Message, state: FSMContext, telegram_id: str):
+    await _sync_guest_booking_if_needed(telegram_id)
     existing_booking = get_or_create_guest_booking(telegram_id)
     await state.update_data(contact_admin_type="guest", preferred_segment="in_house")
     await nav_reset(state, VIEW_SEGMENT, VIEW_IN_HOUSE)
@@ -72,24 +102,28 @@ async def _handle_in_house_logic(message: Message, state: FSMContext, telegram_i
         "☕ Завтраки проходят с 08:00 до 10:00 в ресторане на 1 этаже."
     )
     
-    from bot.keyboards.main_menu import build_in_house_menu, build_guest_booking_keyboard, build_in_house_reply_keyboard
+    from bot.keyboards.main_menu import build_in_house_menu, build_in_house_reply_keyboard
+
+    if not existing_booking:
+        await message.answer(
+            text,
+            parse_mode="HTML",
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        await message.answer(
+            "📝 Чтобы сразу пользоваться рум-сервисом и запрашивать уборку, укажите данные проживания."
+        )
+        await _start_guest_booking_flow(message, state)
+        return
+
     await state.set_state(FlowState.in_house_menu)
     await message.answer(text, parse_mode="HTML", reply_markup=build_in_house_reply_keyboard())
-    
+
     # Always send the in-house menu so the user can see Room Service and other buttons
     await message.answer(
         content_manager.get_text("menus.in_house_title"),
         reply_markup=build_in_house_menu()
     )
-    
-    # If no booking registered, prompt to set up stay info
-    if not existing_booking:
-        await message.answer(
-            "📝 <b>Удобная опция:</b>\n\n"
-            "Для доступа к Рум-сервису, пожалуйста, укажите данные вашего проживания.",
-            reply_markup=build_guest_booking_keyboard(),
-            parse_mode="HTML"
-        )
 
 @router.callback_query(F.data == "in_check_in")
 async def start_check_in(callback: CallbackQuery, state: FSMContext):
@@ -121,9 +155,7 @@ async def handle_passport(message: Message, state: FSMContext):
 async def start_guest_booking(callback: CallbackQuery, state: FSMContext):
     """Start guest booking capture flow."""
     await callback.answer()
-    await state.set_state(FlowState.guest_room_number)
-    text = content_manager.get_text("guest_booking.room_prompt")
-    await callback.message.answer(text)
+    await _start_guest_booking_flow(callback.message, state)
 
 
 @router.message(FlowState.guest_room_number)
@@ -215,7 +247,6 @@ async def handle_guest_check_out(message: Message, state: FSMContext):
     check_out_display = check_out.strftime("%d.%m.%Y")
     
     text = content_manager.get_text("guest_booking.booking_saved").format(
-        room_number=room_number,
         check_in=check_in_display,
         check_out=check_out_display
     )
@@ -223,8 +254,12 @@ async def handle_guest_check_out(message: Message, state: FSMContext):
     await message.answer(text, parse_mode="HTML")
     
     # Show main in-house menu
-    from bot.keyboards.main_menu import build_in_house_menu
+    from bot.keyboards.main_menu import build_in_house_menu, build_in_house_reply_keyboard
     await state.set_state(FlowState.in_house_menu)
+    await message.answer(
+        "Используйте кнопки ниже для выбора:",
+        reply_markup=build_in_house_reply_keyboard()
+    )
     await message.answer(
         content_manager.get_text("menus.in_house_title"),
         reply_markup=build_in_house_menu()

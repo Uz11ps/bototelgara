@@ -21,6 +21,7 @@ from db.models import TicketStatus, TicketType, TicketMessage, TicketMessageSend
 from db.session import SessionLocal
 from services.content import content_manager
 from services.tickets import (
+    close_dialog_ticket,
     get_all_active_tickets,
     get_pending_tickets,
     get_ticket_by_id,
@@ -67,6 +68,7 @@ def format_ticket_summary(ticket) -> str:
         f"📝 Тип: {type_name}\n"
         f"👤 Гость: {guest_info}\n"
         f"🕐 Создана: {created}\n"
+        f"💬 Диалог: {'открыт' if getattr(ticket, 'dialog_open', False) else 'закрыт'}\n"
         f"💬 {message_preview}\n"
     )
 
@@ -557,3 +559,21 @@ async def admin_decline_ticket(callback: CallbackQuery) -> None:
             )
         else:
             await callback.answer("❌ Ошибка при обновлении заявки", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("admin_close_dialog_"))
+async def admin_close_dialog(callback: CallbackQuery) -> None:
+    """Manually close an open guest-admin dialog."""
+    user_id = str(callback.from_user.id)
+    with SessionLocal() as session:
+        if not is_user_admin(session, user_id):
+            await callback.answer("❌ Нет доступа", show_alert=True)
+            return
+
+    ticket_id = int(callback.data.split("_")[-1])
+    if not close_dialog_ticket(ticket_id):
+        await callback.answer("❌ Диалог не найден", show_alert=True)
+        return
+
+    await callback.answer("🔒 Диалог закрыт")
+    await callback.message.answer(f"Диалог по заявке #{ticket_id} закрыт вручную.")

@@ -14,6 +14,9 @@ class Settings:
     database_url: str
     admin_registration_token: str | None
     log_level: str
+    shelter_pms_token: str | None
+    shelter_pms_base_url: str
+    shelter_sync_interval: int
 
 
 def get_settings() -> Settings:
@@ -27,6 +30,9 @@ def get_settings() -> Settings:
     print(f"DEBUG: Using database URL: {database_url}")
     admin_registration_token = os.getenv("ADMIN_REGISTRATION_TOKEN")
     log_level = os.getenv("LOG_LEVEL", "INFO")
+    shelter_pms_token = os.getenv("SHELTER_PMS_TOKEN")
+    shelter_pms_base_url = os.getenv("SHELTER_PMS_BASE_URL", "https://cloud.shelter.ru/sheltercloudapi")
+    shelter_sync_interval = int(os.getenv("SHELTER_SYNC_INTERVAL_SECONDS", "300"))
 
     # Do not log secrets
     logging.basicConfig(level=getattr(logging, log_level.upper(), logging.INFO))
@@ -36,4 +42,7 @@ def get_settings() -> Settings:
         database_url=database_url,
         admin_registration_token=admin_registration_token,
         log_level=log_level,
+        shelter_pms_token=shelter_pms_token,
+        shelter_pms_base_url=shelter_pms_base_url,
+        shelter_sync_interval=shelter_sync_interval,
     )

@@ -42,7 +42,7 @@ interface CartEntry {
 }
 
 type MenuKey = 'main' | 'visual';
-type ActiveTab = 'home' | 'guide' | 'restaurant' | 'cart';
+type ActiveTab = 'home' | 'guide' | 'cameras' | 'restaurant' | 'cart';
 
 const API_BASE = window.location.origin;
 
@@ -81,10 +81,18 @@ const App: React.FC = () => {
   const [comment, setComment] = useState('');
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [orderSuccess, setOrderSuccess] = useState<{ orderId: number; total: number } | null>(null);
+  const [cameraTick, setCameraTick] = useState(Date.now());
+  const [cameraErrors, setCameraErrors] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     WebApp.ready();
     WebApp.expand();
+
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'home' || tab === 'guide' || tab === 'cameras' || tab === 'restaurant' || tab === 'cart') {
+      setActiveTab(tab);
+    }
   }, []);
 
   // Fetch guide data
@@ -119,6 +127,15 @@ const App: React.FC = () => {
         .catch(e => console.error('Menu fetch error:', e))
         .finally(() => setMenuLoading(false));
     }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (activeTab !== 'cameras') return;
+    setCameraTick(Date.now());
+    const interval = window.setInterval(() => {
+      setCameraTick(Date.now());
+    }, 20000);
+    return () => window.clearInterval(interval);
   }, [activeTab]);
 
   const sendMenuMessage = (text: string) => {
@@ -220,6 +237,11 @@ const App: React.FC = () => {
     if (tab !== 'cart') setOrderSuccess(null);
   };
 
+  const refreshCameras = () => {
+    setCameraTick(Date.now());
+    setCameraErrors({});
+  };
+
   // ══════════════════════════════════════════════
   // HOME SCREEN
   // ══════════════════════════════════════════════
@@ -259,7 +281,7 @@ const App: React.FC = () => {
           )}
           {currentMenu === 'visual' && (
             <>
-              {['🏨 Забронировать номер','🛏️ Номера и цены','🌲 Об отеле','🎉 Мероприятия и банкеты','📍 Как добраться','❓ Вопросы и ответы','🍽️ Ресторан','📞 Связаться с администратором'].map((label) => (
+              {['🏨 Забронировать номер','🌲 Об отеле','🎉 Мероприятия и банкеты','📍 Как добраться','❓ Вопросы и ответы','🍽️ Ресторан','📞 Связаться с администратором'].map((label) => (
                 <button key={label} onClick={() => sendMenuMessage(label)}
                   className="w-full glass-card p-4 text-left font-semibold text-slate-800 hover:bg-white/60 active:scale-[0.98] transition-all shadow-md hover:shadow-lg flex items-center">
                   <span>{label}</span>
@@ -358,6 +380,44 @@ const App: React.FC = () => {
                 );
               })
             )}
+          </div>
+        )}
+
+        {/* ══════ MENU TAB ══════ */}
+        {activeTab === 'cameras' && (
+          <div className="space-y-4 animate-fade-in">
+            <div className="glass-card p-4 shadow-sm">
+              <h2 className="text-xl font-bold text-emerald-900 flex items-center">
+                <span className="mr-2">🎥</span> Камеры
+              </h2>
+              <p className="text-slate-500 text-sm mt-1">Снимки обновляются автоматически каждые 20 секунд</p>
+            </div>
+
+            <button
+              onClick={refreshCameras}
+              className="w-full premium-gradient text-white py-3 rounded-2xl font-bold shadow-lg active:scale-[0.98] transition-all"
+            >
+              Обновить камеры
+            </button>
+
+            {['camera1', 'camera2'].map((cameraId, idx) => (
+              <div key={cameraId} className="glass-card p-4 shadow-sm">
+                <h3 className="font-bold text-slate-800 mb-3">Камера {idx + 1}</h3>
+                <div className="rounded-2xl overflow-hidden bg-slate-900 min-h-[180px] flex items-center justify-center">
+                  {!cameraErrors[cameraId] ? (
+                    <img
+                      src={`${API_BASE}/api/camera/${cameraId}/snapshot?t=${cameraTick}`}
+                      alt={`Камера ${idx + 1}`}
+                      className="w-full h-auto object-cover"
+                      onError={() => setCameraErrors((prev) => ({ ...prev, [cameraId]: true }))}
+                      onLoad={() => setCameraErrors((prev) => ({ ...prev, [cameraId]: false }))}
+                    />
+                  ) : (
+                    <span className="text-red-300 text-sm">Камера временно недоступна</span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -606,6 +666,7 @@ const BottomNav: React.FC<{ activeTab: ActiveTab; cartCount: number; onSwitch: (
   const tabs: { id: ActiveTab; label: string; icon: string }[] = [
     { id: 'home', label: 'Главная', icon: '🏨' },
     { id: 'guide', label: 'Гид', icon: '🗺️' },
+    { id: 'cameras', label: 'Камеры', icon: '🎥' },
     { id: 'restaurant', label: 'Меню', icon: '🍽' },
     { id: 'cart', label: 'Корзина', icon: '🛒' },
   ];

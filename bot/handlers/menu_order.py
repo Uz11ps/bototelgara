@@ -23,7 +23,7 @@ from db.session import SessionLocal
 from services.content import content_manager
 from services.admins import notify_admins_about_ticket
 from services.guest_context import get_active_room_number
-from services.tickets import TicketRateLimitExceededError, create_ticket
+from services.tickets import TicketRateLimitExceededError, create_ticket, mark_order_guest_notified
 
 
 router = Router()
@@ -576,7 +576,9 @@ async def handle_order_confirm(callback: CallbackQuery, state: FSMContext) -> No
     confirmation += "\nМы свяжемся с вами для уточнения времени доставки."
     
     await callback.message.answer(confirmation, parse_mode="HTML")
-    
+    # Помечаем как уведомлённого, чтобы bot_api_bridge не слал дубликат
+    mark_order_guest_notified(ticket.id)
+
     # Notify admins
     bot: Bot = callback.bot  # type: ignore
     await notify_admins_about_ticket(bot, ticket, summary)

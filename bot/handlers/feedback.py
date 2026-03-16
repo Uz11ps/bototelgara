@@ -3,16 +3,25 @@ from __future__ import annotations
 import logging
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, Message, InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.states import FlowState
 from services.tickets import create_ticket, TicketRateLimitExceededError
 from db.models import TicketType
 from services.admins import notify_admins_about_ticket
 from aiogram import Bot
+from services.guest_notifications import YANDEX_REVIEW_URL
 
 logger = logging.getLogger(__name__)
 router = Router()
+
+
+def _build_yandex_review_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Оставить отзыв", url=YANDEX_REVIEW_URL)]
+        ]
+    )
 
 async def _start_feedback_flow(message: Message, state: FSMContext) -> None:
     await state.set_state(FlowState.feedback_rating)
@@ -92,12 +101,14 @@ async def handle_feedback_finalize(message: Message, state: FSMContext) -> None:
         f"Комментарий: {data.get('feedback_comments')}"
     )
     
+    ticket = None
     try:
         ticket = create_ticket(
             type_=TicketType.FEEDBACK,
             guest_chat_id=str(message.from_user.id),
             guest_name=message.from_user.full_name,
             room_number=None,
+            payload=None,
             initial_message=summary,
         )
     except TicketRateLimitExceededError:
@@ -108,14 +119,16 @@ async def handle_feedback_finalize(message: Message, state: FSMContext) -> None:
         "Ваше мнение помогает нам становиться лучше. Надеемся увидеть вас снова!"
     )
     
-    # Send link to external review platforms if rating is high
-    if int(data.get('feedback_rating', '0')) >= 4:
+    # Ask for a public Yandex review only after the guest has given the top score.
+    if int(data.get('feedback_rating', '0')) == 5:
         await message.answer(
-            "Будем очень признательны, если вы продублируете ваш отзыв на Яндекс Картах или Яндекс Путешествиях:\n"
-            "https://yandex.ru/maps/org/gora/..."
+            "Спасибо за высокую оценку.\n"
+            "Если вам удобно, будем очень признательны за отзыв на Яндекс Путешествиях.",
+            reply_markup=_build_yandex_review_keyboard(),
         )
     
     bot: Bot = message.bot
-    await notify_admins_about_ticket(bot, ticket, summary)
+    if ticket is not None:
+        await notify_admins_about_ticket(bot, ticket, summary)
     
     await state.clear()

@@ -5,8 +5,8 @@ from aiogram import Dispatcher
 from bot.handlers import (
     admin, in_house, pre_arrival, room_service, start, 
     additional_services, feedback, admin_panel, booking, 
-    guide, weather, sos, loyalty, staff, check_in, 
-    menu_order, cleaning_schedule, webapp
+    guide, weather, sos, loyalty, staff, check_in, events,
+    menu_order, cleaning_schedule, webapp, open_dialog
 )
 
 
@@ -15,6 +15,7 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.include_router(admin.router)
     dp.include_router(admin_panel.router)
     dp.include_router(booking.router)
+    dp.include_router(events.router)
     dp.include_router(guide.router)
     dp.include_router(weather.router)
     dp.include_router(sos.router)
@@ -29,3 +30,4 @@ def register_handlers(dp: Dispatcher) -> None:
     dp.include_router(room_service.router)
     dp.include_router(additional_services.router)
     dp.include_router(feedback.router)
+    dp.include_router(open_dialog.router)
